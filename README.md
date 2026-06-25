@@ -1,7 +1,7 @@
 # PROJECT CARNAGE
 
 A first person movement shooter built in Unreal Engine 5.7 with C++.
-Doom Eternal aggression, Titanfall 2 flow, and a Devil May Cry style rank system stacked on top.
+Doom Eternal aggression, Titanfall 2 flow, and a style rank system stacked on top.
 
 > Working title. Built as a feel-first FPS sandbox where the whole point is movement and shooting that feel incredible to chain together.
 
