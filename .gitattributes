@@ -1,0 +1,7 @@
+# Treat Unreal binary assets as binary (no line-ending conversion, no text merge)
+*.uasset binary
+*.umap binary
+*.upk binary
+*.udk binary
+*.ubulk binary
+*.uexp binary

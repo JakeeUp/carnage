@@ -1,0 +1,52 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
+#pragma once
+
+#include "NativeGameplayTags.h"
+
+namespace CarnageTags
+{
+	// ── State ───────────────────────────────────────────────────────────
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Sprinting);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Sliding);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Dashing);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_WallRunning);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Mantling);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_InAir);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Dead);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Stunned);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Parrying);
+
+	// ── Damage ──────────────────────────────────────────────────────────
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Physical);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Headshot);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Critical);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Melee);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Explosion);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage_Falling);
+
+	// ── SetByCaller (GE magnitude IDs) ──────────────────────────────────
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(SetByCaller_Damage);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(SetByCaller_Heal);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(SetByCaller_HeadshotMult);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(SetByCaller_CritMult);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(SetByCaller_SurfaceMult);
+
+	// ── Ability ─────────────────────────────────────────────────────────
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Dash);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Slide);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_DoubleJump);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Melee_Light);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Melee_Heavy);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Parry);
+
+	// ── Events ──────────────────────────────────────────────────────────
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_DamageDealt);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_KillConfirmed);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_Headshot);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_Parried);
+
+	// ── Cooldowns ───────────────────────────────────────────────────────
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Cooldown_Dash);
+	FPS_MOVEMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Cooldown_Melee);
+}

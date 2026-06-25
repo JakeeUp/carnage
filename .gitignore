@@ -1,0 +1,34 @@
+# Unreal Engine build artifacts (regenerated locally, never commit)
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# IDE / generated project files
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.xcodeproj/
+*.xcworkspace/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local-only backup folder (not part of the project)
+_Removed_Backup/
+
+# Crash logs
+*.log
+
+# Asset-store / template art packs (re-download from Fab, not redistributed here)
+/Content/FirstPersonPistolAnimations/
+/Content/Characters/
+/Content/Weapons/
