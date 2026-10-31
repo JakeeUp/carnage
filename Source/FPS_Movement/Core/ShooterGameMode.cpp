@@ -9,8 +9,15 @@ void AShooterGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ShooterUI = CreateWidget<UShooterUI>(UGameplayStatics::GetPlayerController(GetWorld(), 0), ShooterUIClass);
-	ShooterUI->AddToViewport(0);
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (ShooterUIClass && PC)
+	{
+		ShooterUI = CreateWidget<UShooterUI>(PC, ShooterUIClass);
+		if (ShooterUI)
+		{
+			ShooterUI->AddToViewport(0);
+		}
+	}
 }
 
 void AShooterGameMode::IncrementTeamScore(uint8 TeamByte)
@@ -24,5 +31,8 @@ void AShooterGameMode::IncrementTeamScore(uint8 TeamByte)
 	++Score;
 	TeamScores.Add(TeamByte, Score);
 
-	ShooterUI->BP_UpdateScore(TeamByte, Score);
+	if (ShooterUI)
+	{
+		ShooterUI->BP_UpdateScore(TeamByte, Score);
+	}
 }
