@@ -285,7 +285,7 @@ void AShooterCharacter::DoReload()
 
 void AShooterCharacter::DoSwitchWeapon()
 {
-	if (OwnedWeapons.Num() > 1 && !IsDead())
+	if (OwnedWeapons.Num() > 1 && CurrentWeapon && !IsDead())
 	{
 		CurrentWeapon->DeactivateWeapon();
 
@@ -453,8 +453,14 @@ void AShooterCharacter::OnWeaponActivated(AShooterWeapon* Weapon)
 {
 	OnBulletCountUpdated.Broadcast(Weapon->GetMagazineSize(), Weapon->GetBulletCount());
 
-	GetFirstPersonMesh()->SetAnimInstanceClass(Weapon->GetFirstPersonAnimInstanceClass());
-	GetMesh()->SetAnimInstanceClass(Weapon->GetThirdPersonAnimInstanceClass());
+	if (GetFirstPersonMesh())
+	{
+		GetFirstPersonMesh()->SetAnimInstanceClass(Weapon->GetFirstPersonAnimInstanceClass());
+	}
+	if (GetMesh())
+	{
+		GetMesh()->SetAnimInstanceClass(Weapon->GetThirdPersonAnimInstanceClass());
+	}
 }
 
 void AShooterCharacter::OnWeaponDeactivated(AShooterWeapon* Weapon)
