@@ -157,7 +157,7 @@ protected:
 
 	FTimerHandle ReloadTimer;
 
-	TObjectPtr<APawn> PawnOwner;
+	TWeakObjectPtr<APawn> PawnOwner;
 
 	UPROPERTY(EditAnywhere, Category="Perception", meta = (ClampMin = 0, ClampMax = 100))
 	float ShotLoudness = 1.0f;

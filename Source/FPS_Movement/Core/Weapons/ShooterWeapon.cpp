@@ -295,9 +295,9 @@ void AShooterWeapon::FireShot()
 
 	TimeOfLastShot = GetWorld()->GetTimeSeconds();
 
-	if (PawnOwner)
+	if (PawnOwner.IsValid())
 	{
-		MakeNoise(ShotLoudness, PawnOwner, PawnOwner->GetActorLocation(), ShotNoiseRange, ShotNoiseTag);
+		MakeNoise(ShotLoudness, PawnOwner.Get(), PawnOwner->GetActorLocation(), ShotNoiseRange, ShotNoiseTag);
 	}
 
 	if (CurrentBullets <= 0)
@@ -328,7 +328,7 @@ void AShooterWeapon::FireProjectile(const FVector& TargetLocation)
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	SpawnParams.TransformScaleMethod = ESpawnActorScaleMethod::OverrideRootScale;
 	SpawnParams.Owner = GetOwner();
-	SpawnParams.Instigator = PawnOwner;
+	SpawnParams.Instigator = PawnOwner.Get();
 
 	GetWorld()->SpawnActor<AShooterProjectile>(ProjectileClass, ProjectileTransform, SpawnParams);
 }
@@ -367,8 +367,8 @@ void AShooterWeapon::FireHitscan(const FVector& TargetLocation)
 		HitInfo.BaseDamage = HitscanDamage;
 		HitInfo.PhysicsImpulse = HitscanImpulse;
 		HitInfo.KnockbackForce = HitscanKnockback;
-		HitInfo.InstigatorController = PawnOwner ? PawnOwner->GetController() : nullptr;
-		HitInfo.InstigatorPawn = PawnOwner;
+		HitInfo.InstigatorController = PawnOwner.IsValid() ? PawnOwner->GetController() : nullptr;
+		HitInfo.InstigatorPawn = PawnOwner.Get();
 		HitInfo.DamageCauser = this;
 		HitInfo.DamageType = HitscanDamageType;
 		HitInfo.bAllowHeadshot = bAllowHeadshots;
