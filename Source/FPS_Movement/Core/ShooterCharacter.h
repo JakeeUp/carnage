@@ -270,6 +270,7 @@ protected:
 	void DoSlide();
 	void DoStopSlide();
 	void DoDash();
+	void DoStopMove() { LastMoveInput = FVector2D::ZeroVector; }
 	void DoStartADS();
 	void DoStopADS();
 
