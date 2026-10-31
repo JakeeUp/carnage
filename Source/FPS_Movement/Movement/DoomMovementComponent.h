@@ -166,6 +166,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|WallRun", meta=(ClampMin=0, ClampMax=2, Units="s"))
 	float WallRunReattachCooldown = 0.35f;
 
+	/** Seconds between airborne wall-run trace checks. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|WallRun", meta=(ClampMin=0, ClampMax=0.5, Units="s"))
+	float WallRunCheckInterval = 0.05f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|WallRun")
 	bool bWallRunRequiresInput = true;
 
@@ -312,6 +316,7 @@ private:
 	float WallRunTimer = 0.0f;
 	float WallRunCurrentSpeed = 0.0f;
 	float LastWallRunEndTime = -1000.0f;
+	float WallRunCheckTimer = 0.0f;
 	FVector WallRunNormal = FVector::ZeroVector;
 	FVector WallRunDirection = FVector::ZeroVector;
 	FVector LastWallRunNormal = FVector::ZeroVector;

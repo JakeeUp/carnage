@@ -55,6 +55,13 @@ void UDoomMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	if (IsFalling() && !bIsWallRunning && !bIsMantling && !bIsDashing)
 	{
+		WallRunCheckTimer -= DeltaTime;
+		if (WallRunCheckTimer > 0.0f)
+		{
+			return;
+		}
+		WallRunCheckTimer = WallRunCheckInterval;
+
 		if (bWallRunDebug && GEngine)
 		{
 			FHitResult DbgHit;
