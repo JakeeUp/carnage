@@ -150,6 +150,12 @@ void AShooterNPC::Die()
 
 	bIsDead = true;
 
+	StopShooting();
+	if (Weapon)
+	{
+		Weapon->DeactivateWeapon();
+	}
+
 	Tags.Add(DeathTag);
 
 	OnPawnDeath.Broadcast();
