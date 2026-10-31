@@ -23,7 +23,11 @@ void UCarnageAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribut
 {
 	Super::PreAttributeChange(Attribute, NewValue);
 
-	if (Attribute == GetHealthAttribute())
+	if (Attribute == GetMaxHealthAttribute() || Attribute == GetMaxArmorAttribute() || Attribute == GetMaxShieldAttribute())
+	{
+		NewValue = FMath::Max(NewValue, 1.0f);
+	}
+	else if (Attribute == GetHealthAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
 	}
