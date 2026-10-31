@@ -49,7 +49,7 @@ void UCarnageAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCal
 		Target = Data.Target.AbilityActorInfo->AvatarActor.Get();
 	}
 
-	const FGameplayTagContainer& SpecAssetTags = Data.EffectSpec.DynamicAssetTags;
+	const FGameplayTagContainer& SpecAssetTags = Data.EffectSpec.GetDynamicAssetTags();
 
 	// ── Incoming Damage ─────────────────────────────────────────────────
 	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute())

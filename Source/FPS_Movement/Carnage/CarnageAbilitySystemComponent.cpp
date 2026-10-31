@@ -33,7 +33,7 @@ bool UCarnageAbilitySystemComponent::ApplyDamageToTarget(
 	if (!SpecHandle.IsValid()) return false;
 
 	SpecHandle.Data->SetSetByCallerMagnitude(CarnageTags::SetByCaller_Damage, DamageAmount);
-	SpecHandle.Data->DynamicAssetTags.AppendTags(DamageTags);
+	SpecHandle.Data->AppendDynamicAssetTags(DamageTags);
 
 	const FActiveGameplayEffectHandle Applied = ApplyGameplayEffectSpecToTarget(*SpecHandle.Data, TargetASC);
 	return Applied.WasSuccessfullyApplied();
@@ -58,7 +58,7 @@ bool UCarnageAbilitySystemComponent::ApplyDamageToSelf(
 	if (!SpecHandle.IsValid()) return false;
 
 	SpecHandle.Data->SetSetByCallerMagnitude(CarnageTags::SetByCaller_Damage, DamageAmount);
-	SpecHandle.Data->DynamicAssetTags.AppendTags(DamageTags);
+	SpecHandle.Data->AppendDynamicAssetTags(DamageTags);
 
 	const FActiveGameplayEffectHandle Applied = ApplyGameplayEffectSpecToSelf(*SpecHandle.Data);
 	return Applied.WasSuccessfullyApplied();
