@@ -8,8 +8,8 @@
 
 UCarnageAbilitySystemComponent::UCarnageAbilitySystemComponent()
 {
-	SetIsReplicatedByDefault(true);
-	ReplicationMode = EGameplayEffectReplicationMode::Mixed;
+	// Single-player: attributes are not replicated.
+	SetIsReplicatedByDefault(false);
 }
 
 bool UCarnageAbilitySystemComponent::ApplyDamageToTarget(
