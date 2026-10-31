@@ -121,14 +121,21 @@ void UStyleMeterComponent::RecomputeRank()
 {
 	const int32 NewIndex = RankIndexForPoints(StylePoints);
 	const EStyleRank NewRank = static_cast<EStyleRank>(NewIndex);
+	bool bRankChanged = false;
 
 	if (NewRank != CurrentRank)
 	{
 		CurrentRank = NewRank;
 		OnRankChanged.Broadcast(CurrentRank);
+		bRankChanged = true;
 	}
 
-	OnMeterChanged.Broadcast(CurrentRank, GetProgressInRank());
+	const float Progress = GetProgressInRank();
+	if (bRankChanged || FMath::Abs(Progress - LastBroadcastProgress) > 0.002f)
+	{
+		LastBroadcastProgress = Progress;
+		OnMeterChanged.Broadcast(CurrentRank, Progress);
+	}
 }
 
 int32 UStyleMeterComponent::RankIndexForPoints(float Points) const

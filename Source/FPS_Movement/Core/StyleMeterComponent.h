@@ -144,6 +144,7 @@ private:
 
 	float StylePoints = 0.0f;
 	float TimeSinceAction = 1000.0f;
+	float LastBroadcastProgress = -1.0f;
 	float LastLifePercent = 1.0f;
 	float CurrentDamageMultiplier = 1.0f;
 	float CurrentSpeedBonus = 1.0f;
