@@ -248,12 +248,13 @@ void AShooterCharacter::OnJumped_Implementation()
 
 void AShooterCharacter::DoJumpEnd()
 {
+	if (DoomMovement)
+	{
+		DoomMovement->SetWantsToHoldJump(false);
+	}
+
 	if (!IsDead())
 	{
-		if (DoomMovement)
-		{
-			DoomMovement->SetWantsToHoldJump(false);
-		}
 		Super::DoJumpEnd();
 	}
 }
