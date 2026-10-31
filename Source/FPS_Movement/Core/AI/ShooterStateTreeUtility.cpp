@@ -13,7 +13,7 @@ bool FStateTreeLineOfSightToTargetCondition::TestCondition(FStateTreeExecutionCo
 {
 	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
-	if (!IsValid(InstanceData.Target))
+	if (!IsValid(InstanceData.Target) || !IsValid(InstanceData.Character))
 	{
 		return !InstanceData.bMustHaveLineOfSight;
 	}
@@ -31,7 +31,8 @@ bool FStateTreeLineOfSightToTargetCondition::TestCondition(FStateTreeExecutionCo
 	FVector CenterOfMass, Extent;
 	InstanceData.Target->GetActorBounds(true, CenterOfMass, Extent, false);
 
-	const float ExtentZOffset = Extent.Z * 2.0f / InstanceData.NumberOfVerticalLineOfSightChecks;
+	const int32 NumChecks = FMath::Max(1, InstanceData.NumberOfVerticalLineOfSightChecks);
+	const float ExtentZOffset = Extent.Z * 2.0f / NumChecks;
 
 	const FVector Start = InstanceData.Character->GetFirstPersonCameraComponent()->GetComponentLocation();
 
@@ -41,7 +42,7 @@ bool FStateTreeLineOfSightToTargetCondition::TestCondition(FStateTreeExecutionCo
 
 	FHitResult OutHit;
 
-	for (int32 i = 0; i < InstanceData.NumberOfVerticalLineOfSightChecks - 1; ++i)
+	for (int32 i = 0; i < NumChecks; ++i)
 	{
 		const FVector End = CenterOfMass + FVector(0.0f, 0.0f, Extent.Z - ExtentZOffset * i);
 
