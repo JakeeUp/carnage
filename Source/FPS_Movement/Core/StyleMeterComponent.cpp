@@ -173,7 +173,7 @@ void UStyleMeterComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
 
 	const float TargetSpeed = bAffectsGameplay ? SpeedMultiplierForRank() : 1.0f;
 	CurrentSpeedBonus = FMath::FInterpTo(CurrentSpeedBonus, TargetSpeed, DeltaTime, BonusInterpSpeed);
-	if (Movement)
+	if (Movement && !FMath::IsNearlyEqual(CurrentSpeedBonus, Movement->GetExternalSpeedScale(), 0.001f))
 	{
 		Movement->SetExternalSpeedScale(CurrentSpeedBonus);
 	}
