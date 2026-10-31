@@ -1,116 +1,150 @@
-# FPS_Movement — Project Map
+# Architecture
 
-Doom Eternal / Titanfall 2 style movement shooter. UE 5.7, C++ first with Blueprint configuration on top.
-Last updated: 2026-06-11 (post-cleanup: Horror variant removed, source reorganized).
+This document describes how the C++ code in `Source/FPS_Movement/` is organized and how the main systems interact. For a feature overview, see [README.md](README.md). For the Gameplay Ability System layer in detail, see [Docs/Systems/GAS.md](Docs/Systems/GAS.md).
 
----
+Gameplay logic is written in C++. Blueprints are used for asset references, tuning values, and widget layout.
 
-## Source layout (`Source/FPS_Movement/`)
-
-```
-FPS_Movement.h/.cpp   Module boilerplate (lives at the module root, next to Build.cs)
-Template/             UE5 first-person template DEFAULTS — base Character/Controller/GameMode/CameraManager. Rarely touched; this is the "what is this?" stuff isolated out of the way.
-Movement/             CUSTOM: the Doom/Titanfall movement brain + momentum combo
-Camera/               CUSTOM: movement-driven camera juice
-Weapons/              CUSTOM: recoil/sway feel system + shared recoil types
-Carnage/              CUSTOM: GAS layer — health, armor, damage tags (player only)
-Variant_Shooter/      The actual game: character, weapons, AI, UI, game mode (template variant, heavily extended)
-```
-
-Quick orientation: **`Template/` = UE5 defaults** you can mostly ignore. **`Movement/ Camera/ Weapons/ Carnage/` = the custom systems built for this project.** **`Variant_Shooter/` = the game itself.**
-
-### (module root) + Template/
-| File | What it is | Used by |
-|---|---|---|
-| `FPS_Movement.h/.cpp` (root) | Module boilerplate + `LogFPS_Movement` log category | everything |
-| `Template/FPS_MovementCharacter` | UE5-template base first-person character: camera, FP arms mesh, move/look/jump input plumbing | parent of `ShooterCharacter` and `ShooterNPC` |
-| `Template/FPS_MovementPlayerController` | UE5-template base PC: loads input mapping contexts, touch controls | parent of `ShooterPlayerController` |
-| `Template/FPS_MovementGameMode` | UE5-template empty base game mode | parent of `ShooterGameMode` |
-| `Template/FPS_MovementCameraManager` | UE5-template camera manager (pitch limits) | set by `FPS_MovementPlayerController` |
-
-### Movement/
-| File | What it is | Used by |
-|---|---|---|
-| `DoomMovementComponent` | Custom CharacterMovementComponent: sprint, momentum slide (+sprint-slide boost), dash w/ charges, bunny hop, wall run (momentum-preserving, custom movement mode), mantle, double jump w/ air redirect, coyote time, jump buffer. Broadcasts `OnMovementAction` on each traversal; accepts a generic `SetExternalSpeedScale` so external systems can boost speed without it knowing they exist. Profiled via `STAT_DoomMovementTick` / `STAT_DoomWallRun` | swapped in by `ShooterCharacter`'s constructor (`SetDefaultSubobjectClass`) |
-| `Variant_Shooter/StyleMeterComponent` | DMC-style **"Carnage Meter"**. Consumes `OnMovementAction` + `OnHitConfirmed` + `OnDamaged`. Style points with a **variety multiplier** (repetition falloff + freshness bonus — mixing moves pays, spamming one doesn't), D→SSS ranks, time decay (faster at higher ranks), and a damage-taken crash. When `bAffectsGameplay`, rank feeds a speed bonus (`SetExternalSpeedScale`) + an outgoing-damage bonus (read through `IShooterWeaponHolder::GetOutgoingDamageMultiplier` at the `ShooterDamage::ApplyHit` chokepoint). `OnRankChanged`/`OnMeterChanged` delegates for UMG. *(Superseded the earlier MomentumComponent.)* | component on `ShooterCharacter` |
-
-### Camera/
-| File | What it is | Used by |
-|---|---|---|
-| `DoomCameraEffectsComponent` | FOV state machine (sprint/slide/dash/ADS), strafe & wall-run tilt, head bob, landing dip, slide camera dip | component on `ShooterCharacter`; reads ADS via `AimStateProvider` delegate (no dependency on the character class) |
-| `DoomCameraModifier` | Applies the FOV/tilt/pitch values to the camera each frame | created at runtime by `DoomCameraEffectsComponent` |
-
-### Weapons/
-| File | What it is | Used by |
-|---|---|---|
-| `WeaponRecoilComponent` | Aim-recoil spring w/ recovery + player-compensation tracking, procedural FP-mesh kickback, look/movement sway. Writes control rotation directly (immune to the legacy input-scale inversion) | component on `ShooterCharacter`; fed by `AShooterWeapon` via `AddWeaponRecoil` |
-| `WeaponRecoilTypes.h` | `FWeaponRecoilParams` struct (per-shot recoil profile, editable per weapon BP) | `AShooterWeapon`, `IShooterWeaponHolder`, `WeaponRecoilComponent` |
-
-### Carnage/ (GAS — player health/armor only; NPCs use a plain HP float)
-| File | What it is | Used by |
-|---|---|---|
-| `CarnageAbilitySystemComponent` | ASC subclass + `ApplyDamageToTarget/Self` helpers | component on `ShooterCharacter` |
-| `CarnageAttributeSet` | Health/MaxHealth, Armor (absorbs 50%), Shield (reserved), meta IncomingDamage/Healing; fires OnHealthChanged/OnDied | `ShooterCharacter` HUD + death flow |
-| `CarnageGameplayTags` | Native tags: `State.*` (synced from movement every tick), `Damage.*`, `SetByCaller.*`, `Ability.*` (reserved) | `ShooterCharacter`, `GE_InstantDamage` |
-| `GE_InstantDamage` | SetByCaller damage GameplayEffect — the bridge from `TakeDamage` into GAS | `ShooterCharacter::TakeDamage` |
-
-### Variant_Shooter/
-| File | What it is | Used by |
-|---|---|---|
-| `ShooterCharacter` | THE player class: weapon inventory, GAS wiring, hit feedback (hitmarker delegate, sounds, kill hitstop), double-jump config, coyote refund | `BP_ShooterChar` (your character), `BP_ShooterCharacter` (template variant one) |
-| `ShooterGameMode` | Team scores | `BP_ShooterGameMode` |
-| `ShooterPlayerController` | Adds `IMC_Weapons` etc., spawns bullet-counter HUD, respawn | `BP_ShooterPlayerController` |
-| `Weapons/ShooterWeapon` | Weapon actor: projectile **or hitscan** fire modes, refire/full-auto, shot buffering, spread (true degrees), muzzle/tracer/sound FX slots, recoil profile | `BP_Pistol` (yours), `BP_ShooterWeapon_*` (template) |
-| `Weapons/ShooterProjectile` | Projectile: impact/explosion damage through the shared hit pipeline, headshot support | `BP_ShooterProjectile_Bullet`, `_Grenade` |
-| `Weapons/ShooterWeaponHolder` | Interface between weapons and whoever holds them | `ShooterCharacter`, `ShooterNPC` |
-| `Weapons/ShooterDamageUtils` | **The one damage path**: headshot resolution (bone or capsule height), kill detection (`Dead` actor tag), physics impulse, instigator hit-feedback dispatch | `ShooterProjectile`, `ShooterWeapon` (hitscan) |
-| `Weapons/ShooterHitFeedbackInterface` | `IShooterHitFeedbackReceiver` — "you hit something" callback | implemented by `ShooterCharacter` |
-| `Weapons/ShooterPickup` | Weapon pickup actor | `BP_ShooterPickup` on `Lvl_Shooter` |
-| `AI/ShooterNPC` | Enemy character (plain `CurrentHP`, ragdoll death, grants `Dead` tag) | `BP_ShooterNPC` |
-| `AI/ShooterAIController`, `ShooterStateTreeUtility`, `EnvQueryContext_Target`, `ShooterNPCSpawner` | StateTree-driven AI + spawner | `BP_ShooterAIController`, `ST_Shooter`, `BP_ShooterNPCSpawner` |
-| `UI/ShooterUI`, `UI/ShooterBulletCounterUI` | HUD widget bases | `UI_Shooter`, `UI_ShooterBulletCounter` |
-
----
-
-## The gameplay flow (who calls whom)
+## Source Layout
 
 ```
-Input (IMC_Weapons / IMC_Default, loaded by the PlayerController)
-  → ShooterCharacter (DoStartFiring / DoJumpStart / DoSlide / DoDash ...)
-      → DoomMovementComponent  (movement verbs, coyote/buffer)
-      → CurrentWeapon->StartFiring()
-          → FireShot(): projectile spawn OR hitscan trace
-              → ShooterDamage::ApplyHit()
-                  → ApplyDamage → NPC HP  /  player GAS (armor → health)
-                  → headshot + kill detection
-                  → IShooterHitFeedbackReceiver on the shooter
-                      → OnHitConfirmed (BP/UI) + hit sounds + kill hitstop
-          → AddWeaponRecoil → WeaponRecoilComponent (aim spring + mesh kick)
-      → DoomCameraEffectsComponent reads movement state → FOV/tilt/bob
+Source/FPS_Movement/
+├── Core/          Game framework classes and gameplay glue
+│   ├── AI/        NPC character, AI controller, StateTree utilities, spawner, juggle component
+│   ├── UI/        HUD widget base classes
+│   └── Weapons/   Weapon, projectile, pickup, damage pipeline, hit feedback interface
+├── Movement/      Custom CharacterMovementComponent (DoomMovementComponent)
+├── Camera/        Movement-driven camera effects and camera modifier
+├── Weapons/       Recoil spring, sway, and recoil profile types
+├── Carnage/       Gameplay Ability System layer (player health, armor, damage tags)
+└── Template/      Base classes inherited from the Unreal first-person template
 ```
 
----
+### Module Map
 
-## Content map (what's live)
+| Folder | Contents | Notes |
+| :--- | :--- | :--- |
+| `Core/` | `AShooterCharacter`, `AShooterPlayerController`, `AShooterGameMode`, `UStyleMeterComponent` | The game itself. |
+| `Core/AI/` | `AShooterNPC`, `AShooterAIController`, `UJuggleComponent`, `UEnvQueryContext_Target`, `AShooterNPCSpawner`, `ShooterStateTreeUtility` | StateTree-driven enemy AI. |
+| `Core/Weapons/` | `AShooterWeapon`, `AShooterProjectile`, `AShooterPickup`, `ShooterDamageUtils`, `IShooterWeaponHolder`, `IShooterHitFeedbackReceiver` | Hitscan and projectile fire modes share one damage path. |
+| `Core/UI/` | `UShooterUI`, `UShooterBulletCounterUI` | Widget base classes; layouts are built in UMG. |
+| `Movement/` | `UDoomMovementComponent` | Custom movement, including sprint, slide, dash, wall run, mantle, and bunny hop. |
+| `Camera/` | `UDoomCameraEffectsComponent`, `UDoomCameraModifier` | FOV, tilt, bob, and dip effects driven by movement state. |
+| `Weapons/` | `UWeaponRecoilComponent`, `FWeaponRecoilParams` | Aim recoil, procedural weapon kick, and sway. |
+| `Carnage/` | `UCarnageAbilitySystemComponent`, `UCarnageAttributeSet`, native gameplay tags, `UGE_InstantDamage` | Player vitals on GAS. |
+| `Template/` | `AFPS_MovementCharacter` and template base classes | See the note below. |
 
-| Content folder | Status | Notes |
-|---|---|---|
-| `FirstPerson/` | **LIVE** | `BP_ShooterChar` (your character), `BP_Pistol`, `ABP_ShooterArms`, `Lvl_FirstPerson` (startup map) |
-| `Input/` | **LIVE** | Movement actions + `IMC_Default`/`IMC_MouseLook` |
-| `Variant_Shooter/` | **LIVE** | Shooter game mode/controller/HUD, NPCs, weapons, pickups, `IA_Shoot`, `IMC_Weapons`, `Lvl_Shooter` |
-| `FirstPersonPistolAnimations/` | **LIVE — careful** | Your FP arms mesh + skeleton live in its `Demo/FirstPersonArms/` subfolder; fire/ADS montages in `Animations/`; camera shakes in `Misc/` |
-| `Characters/Mannequins` | **LIVE** | Third-person NPC mannequin + anims |
-| `Weapons/` (Pistol/Rifle/GrenadeLauncher meshes) | **LIVE** | Used by the Variant_Shooter weapon BPs |
-| `Variant_Horror/` | **Removed** (backup) | Only `Input/IA_Sprint` + `IMC_Horror` kept — referenced by the old `BP_FirstPersonCharacter` |
+### Template Base Classes
 
-### Safe-to-delete candidates (do these IN-EDITOR via right-click → Delete, which checks references)
-- `FirstPersonPistolAnimations/Maps/LV_Demonstration` + `Blueprints/BP_DemoCharacter` + `Demo/Input/` — the pack's demo scene. Do **not** delete `Demo/FirstPersonArms/` (your arms live there).
-- `FirstPerson/Blueprints/BP_FirstPersonCharacter` — the old template character (the thing keeping `Variant_Horror/Input` alive). Delete both together once you confirm `Lvl_FirstPerson`'s game mode override is set to `BP_ShooterGameMode`.
-- `Weapons/GrenadeLauncher/` + `BP_ShooterWeapon_GrenadeLauncher` + grenade projectile — only if you don't want the weapon; it may be placed as a pickup in `Lvl_Shooter`.
+`Template/` holds classes derived from the Unreal first-person template. The project is moving away from them:
 
----
+- `AFPS_MovementCharacter` is still the base class of `AShooterCharacter` and `AShooterNPC`.
+- The template player controller, game mode, and camera manager are being removed. `AShooterPlayerController` and `AShooterGameMode` already derive directly from `APlayerController` and `AGameModeBase`, and are the classes used at runtime.
 
-## Backup
+## Class Relationships
 
-Everything removed lives in `_Removed_Backup/` (same folder structure). The editor doesn't scan it.
-Restore = move it back. Once you've played for a while and miss nothing, delete the folder.
+```mermaid
+classDiagram
+    class AFPS_MovementCharacter {
+        <<template base>>
+    }
+    class AShooterCharacter
+    class AShooterNPC
+    class AShooterAIController
+    class AShooterPlayerController
+    class AShooterWeapon
+    class UDoomMovementComponent
+    class UDoomCameraEffectsComponent
+    class UWeaponRecoilComponent
+    class UStyleMeterComponent
+    class UCarnageAbilitySystemComponent
+    class UCarnageAttributeSet
+    class UJuggleComponent
+
+    AFPS_MovementCharacter <|-- AShooterCharacter
+    AFPS_MovementCharacter <|-- AShooterNPC
+    AShooterCharacter *-- UDoomMovementComponent : CharacterMovement
+    AShooterCharacter *-- UDoomCameraEffectsComponent
+    AShooterCharacter *-- UWeaponRecoilComponent
+    AShooterCharacter *-- UStyleMeterComponent
+    AShooterCharacter *-- UCarnageAbilitySystemComponent
+    AShooterCharacter *-- UCarnageAttributeSet
+    AShooterCharacter o-- AShooterWeapon : holds
+    AShooterNPC o-- AShooterWeapon : holds
+    AShooterNPC *-- UJuggleComponent
+    AShooterPlayerController ..> AShooterCharacter : possesses
+    AShooterAIController ..> AShooterNPC : controls
+```
+
+## Frame Flow
+
+```
+Enhanced Input (mapping contexts loaded by AShooterPlayerController)
+  -> AShooterCharacter (fire, jump, slide, dash, reload, swap)
+      -> UDoomMovementComponent            movement verbs, coyote time, jump buffer
+      -> AShooterWeapon::StartFiring()
+          -> FireShot(): projectile spawn or hitscan trace
+              -> ShooterDamage::ApplyHit()
+                  -> NPC: CurrentHP  /  player: GAS (armor, then health)
+                  -> headshot and kill resolution
+                  -> IShooterHitFeedbackReceiver on the shooter
+                      -> hit confirmed event, hit sounds, kill hitstop
+          -> AddWeaponRecoil -> UWeaponRecoilComponent
+      -> UDoomCameraEffectsComponent reads movement state -> FOV, tilt, bob
+```
+
+## Movement
+
+`UDoomMovementComponent` replaces the default `CharacterMovementComponent` through the constructor of `AShooterCharacter`.
+
+- **Sprint and slide.** Momentum-based slide with entry speed scaling, slope acceleration, sprint-slide entry boost, and an anti-spam cooldown.
+- **Dash.** Charge-based air dash with recharge.
+- **Wall run.** Custom movement mode with momentum preservation, wall jumps, and a reattach cooldown.
+- **Mantle.** Ledge climb.
+- **Jumps.** Double jump with air control, coyote time, jump buffering, and bunny hop momentum chaining.
+- **Events.** Broadcasts `OnMovementAction` for each traversal. The style system and other listeners subscribe to this delegate.
+- **External speed.** `SetExternalSpeedScale` lets other systems adjust speed without a direct dependency on them.
+- **Profiling.** Movement tick and wall-run sections are instrumented with `STAT_DoomMovementTick` and `STAT_DoomWallRun`.
+
+## Style System (Carnage Meter)
+
+`UStyleMeterComponent` converts player actions into a rank from D to SSS.
+
+- Consumes `OnMovementAction`, hit confirmations, and damage events.
+- Applies a variety multiplier. Repeating the same move earns less, and using different moves earns more.
+- Decays over time, faster at higher ranks. Taking damage reduces the meter.
+- When gameplay effects are enabled, the rank grants a speed bonus through `SetExternalSpeedScale` and an outgoing damage bonus. The damage bonus is read through `IShooterWeaponHolder::GetOutgoingDamageMultiplier` at the damage chokepoint.
+- Exposes `OnRankChanged` and `OnMeterChanged` delegates for UMG.
+
+## Combat and Damage
+
+All weapon damage goes through `ShooterDamage::ApplyHit`, in `Core/Weapons/ShooterDamageUtils`. Projectiles and hitscan shots both use this path.
+
+- **Headshots.** Resolved by bone or by capsule height.
+- **Kills.** Detected through the `Dead` actor tag.
+- **Feedback.** Instigators receive hit feedback through `IShooterHitFeedbackReceiver`.
+
+Damage is applied differently to the two character types:
+
+- **Player (`AShooterCharacter`).** Damage is applied through the Gameplay Ability System. Armor absorbs a fraction of incoming damage before health.
+- **NPC (`AShooterNPC`).** Damage reduces a plain `CurrentHP` float in `TakeDamage`. This is a simpler path than the player's GAS pipeline.
+
+## Gameplay Ability System
+
+`AShooterCharacter` owns a `UCarnageAbilitySystemComponent` and a `UCarnageAttributeSet`. The attribute set tracks health, armor, and a reserved shield. Movement state is mirrored to native gameplay tags each tick. Full details are in [Docs/Systems/GAS.md](Docs/Systems/GAS.md).
+
+## Camera and Recoil
+
+- `UDoomCameraEffectsComponent` runs a state machine for FOV (sprint, slide, dash, aim down sights), strafe and wall-run tilt, head bob, landing dip, and slide dip. It reads aim state through a delegate, so it does not depend on the character class. It applies its values through a runtime-created `UDoomCameraModifier`.
+- `UWeaponRecoilComponent` runs an aim-recoil spring with recovery and player compensation, plus procedural kick on the first-person mesh and look and movement sway. It writes control rotation directly. Recoil profiles are defined per weapon in `FWeaponRecoilParams`.
+
+## AI
+
+- `AShooterNPC` implements the weapon holder interface and carries a `UJuggleComponent`. Juggle combat lets the player launch enemies, keep them airborne, and slam them down.
+- `AShooterAIController` runs a `UStateTreeAIComponent`. `ShooterStateTreeUtility` provides the custom StateTree tasks and helpers.
+- `UEnvQueryContext_Target` supplies the target context for Environment Query System queries.
+- `AShooterNPCSpawner` spawns NPCs in the level.
+
+## Limitations
+
+- **Single-player only.** `UDoomMovementComponent` is not network-prediction-safe. Replication and client prediction would need to be designed before multiplayer is supported.
+- **NPC damage path.** NPCs use the plain `CurrentHP` path rather than the GAS pipeline. Unifying them onto the Ability System is planned. See [Docs/ROADMAP.md](Docs/ROADMAP.md).
