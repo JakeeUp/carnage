@@ -73,8 +73,16 @@ void AShooterWeapon::EndPlay(EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
 
-	GetWorld()->GetTimerManager().ClearTimer(RefireTimer);
-	GetWorld()->GetTimerManager().ClearTimer(ReloadTimer);
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RefireTimer);
+		World->GetTimerManager().ClearTimer(ReloadTimer);
+	}
+
+	if (AActor* OwnerActor = GetOwner())
+	{
+		OwnerActor->OnDestroyed.RemoveDynamic(this, &AShooterWeapon::OnOwnerDestroyed);
+	}
 }
 
 void AShooterWeapon::OnOwnerDestroyed(AActor* DestroyedActor)
@@ -98,8 +106,11 @@ void AShooterWeapon::ActivateWeapon()
 void AShooterWeapon::DeactivateWeapon()
 {
 	StopFiring();
-	GetWorld()->GetTimerManager().ClearTimer(RefireTimer);
-	GetWorld()->GetTimerManager().ClearTimer(ReloadTimer);
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RefireTimer);
+		World->GetTimerManager().ClearTimer(ReloadTimer);
+	}
 	bShotBuffered = false;
 	bIsReloading = false;
 
