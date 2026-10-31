@@ -22,6 +22,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCarnageHealthChangedSignature, float, NewHealthPercent);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCarnageArmorChangedSignature,  float, NewArmorPercent);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCarnageShieldChangedSignature, float, NewShieldPercent);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FCarnageDiedSignature);
 
 UCLASS()
@@ -84,6 +85,9 @@ public:
 	FCarnageArmorChangedSignature OnArmorChanged;
 
 	UPROPERTY(BlueprintAssignable, Category="Carnage|Events")
+	FCarnageShieldChangedSignature OnShieldChanged;
+
+	UPROPERTY(BlueprintAssignable, Category="Carnage|Events")
 	FCarnageDiedSignature OnDied;
 
 	// ── Overrides ───────────────────────────────────────────────────────
@@ -94,4 +98,7 @@ private:
 
 	void BroadcastHealthChanged();
 	void BroadcastArmorChanged();
+	void BroadcastShieldChanged();
+
+	bool bDied = false;
 };

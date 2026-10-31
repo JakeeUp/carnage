@@ -66,6 +66,7 @@ void UCarnageAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCal
 			const float ShieldAbsorbed = FMath::Min(Remaining, GetShield());
 			SetShield(GetShield() - ShieldAbsorbed);
 			Remaining -= ShieldAbsorbed;
+			BroadcastShieldChanged();
 		}
 
 		if (Remaining > 0.0f && GetArmor() > 0.0f && ArmorAbsorptionRatio > 0.0f)
@@ -123,6 +124,12 @@ void UCarnageAttributeSet::BroadcastHealthChanged()
 {
 	const float MaxHP = GetMaxHealth();
 	OnHealthChanged.Broadcast(MaxHP > 0.0f ? GetHealth() / MaxHP : 0.0f);
+}
+
+void UCarnageAttributeSet::BroadcastShieldChanged()
+{
+	const float MaxShd = GetMaxShield();
+	OnShieldChanged.Broadcast(MaxShd > 0.0f ? GetShield() / MaxShd : 0.0f);
 }
 
 void UCarnageAttributeSet::BroadcastArmorChanged()
