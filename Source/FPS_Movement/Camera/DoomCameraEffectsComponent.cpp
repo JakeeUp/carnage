@@ -33,6 +33,17 @@ void UDoomCameraEffectsComponent::BeginPlay()
 	TargetFOV = BaseFOV;
 }
 
+void UDoomCameraEffectsComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (CameraModifier && OwningCameraManager.IsValid())
+	{
+		OwningCameraManager->RemoveCameraModifier(CameraModifier);
+	}
+	CameraModifier = nullptr;
+
+	Super::EndPlay(EndPlayReason);
+}
+
 void UDoomCameraEffectsComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -49,6 +60,7 @@ void UDoomCameraEffectsComponent::TickComponent(float DeltaTime, ELevelTick Tick
 				{
 					CameraModifier = Cast<UDoomCameraModifier>(
 						CamMgr->AddNewCameraModifier(UDoomCameraModifier::StaticClass()));
+					OwningCameraManager = CamMgr;
 				}
 			}
 		}

@@ -119,6 +119,8 @@ protected:
 
 	virtual void BeginPlay() override;
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 public:
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -130,6 +132,8 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UDoomCameraModifier> CameraModifier;
+
+	TWeakObjectPtr<class APlayerCameraManager> OwningCameraManager;
 
 	UPROPERTY()
 	TObjectPtr<class UCameraComponent> CameraComp;
