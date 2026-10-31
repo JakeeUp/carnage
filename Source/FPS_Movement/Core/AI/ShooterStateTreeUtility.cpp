@@ -181,6 +181,11 @@ EStateTreeRunStatus FStateTreeSenseEnemiesTask::EnterState(FStateTreeExecutionCo
 				const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
 				if (FInstanceDataType* LambdaInstanceData = StrongContext.GetInstanceDataPtr<FInstanceDataType>())
 				{
+					if (!Stimulus.WasSuccessfullySensed())
+					{
+						return;
+					}
+
 					if (SensedActor->ActorHasTag(LambdaInstanceData->SenseTag))
 					{
 						bool bDirectLOS = false;
