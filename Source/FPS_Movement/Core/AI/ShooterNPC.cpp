@@ -11,6 +11,7 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "TimerManager.h"
+#include "FPS_Movement.h"
 
 AShooterNPC::AShooterNPC()
 {
@@ -30,6 +31,12 @@ void AShooterNPC::BeginPlay()
 	SpawnParams.Owner = this;
 	SpawnParams.Instigator = this;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	if (!WeaponClass)
+	{
+		UE_LOG(LogFPS_Movement, Warning, TEXT("ShooterNPC [%s] has no WeaponClass set."), *GetName());
+		return;
+	}
 
 	Weapon = GetWorld()->SpawnActor<AShooterWeapon>(WeaponClass, GetActorTransform(), SpawnParams);
 }
@@ -135,7 +142,7 @@ void AShooterNPC::OnWeaponDeactivated(AShooterWeapon* InWeapon)
 
 void AShooterNPC::OnSemiWeaponRefire()
 {
-	if (bIsShooting)
+	if (bIsShooting && Weapon)
 	{
 		Weapon->StartFiring();
 	}
@@ -193,12 +200,18 @@ void AShooterNPC::StartShooting(AActor* ActorToShoot)
 
 	bIsShooting = true;
 
-	Weapon->StartFiring();
+	if (Weapon)
+	{
+		Weapon->StartFiring();
+	}
 }
 
 void AShooterNPC::StopShooting()
 {
 	bIsShooting = false;
 
-	Weapon->StopFiring();
+	if (Weapon)
+	{
+		Weapon->StopFiring();
+	}
 }
