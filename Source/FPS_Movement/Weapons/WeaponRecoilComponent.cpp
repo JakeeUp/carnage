@@ -57,11 +57,14 @@ void UWeaponRecoilComponent::NotifyAimInput(float YawInput, float PitchInput)
 
 float UWeaponRecoilComponent::AimInputToDegrees(float PitchInput) const
 {
+	// Project has bEnableLegacyInputScales=True: AddControllerPitchInput multiplies by the PC's legacy pitch scale (default -2.5).
 	if (GetDefault<UInputSettings>()->bEnableLegacyInputScales)
 	{
 		const APawn* Pawn = Cast<APawn>(GetOwner());
 		const APlayerController* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		return PitchInput * (PC ? PC->InputPitchScale_DEPRECATED : -2.5f);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 	return PitchInput;
 }
