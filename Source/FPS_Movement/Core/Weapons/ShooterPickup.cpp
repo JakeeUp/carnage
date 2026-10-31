@@ -11,7 +11,7 @@
 
 AShooterPickup::AShooterPickup()
 {
- 	PrimaryActorTick.bCanEverTick = true;
+ 	PrimaryActorTick.bCanEverTick = false;
 
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 
@@ -76,6 +76,7 @@ void AShooterPickup::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor*
 void AShooterPickup::RespawnPickup()
 {
 	SetActorHiddenInGame(false);
+	SetActorEnableCollision(true);
 
 	BP_OnRespawn();
 }
@@ -83,6 +84,4 @@ void AShooterPickup::RespawnPickup()
 void AShooterPickup::FinishRespawn()
 {
 	SetActorEnableCollision(true);
-
-	SetActorTickEnabled(true);
 }
