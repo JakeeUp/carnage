@@ -13,8 +13,6 @@ class UCameraComponent;
 class UInputAction;
 struct FInputActionValue;
 
-DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
-
 UCLASS(abstract)
 class AFPS_MovementCharacter : public ACharacter
 {
