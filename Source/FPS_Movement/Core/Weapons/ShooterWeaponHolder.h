@@ -38,7 +38,8 @@ public:
 
 	virtual FVector GetWeaponTargetLocation() = 0;
 
-	virtual void AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass) = 0;
+	/** Returns true if the holder accepted the weapon (false if already owned, dead, or unsupported). */
+	virtual bool AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass) = 0;
 
 	virtual void OnWeaponActivated(AShooterWeapon* Weapon) = 0;
 

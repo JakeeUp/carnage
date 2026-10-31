@@ -227,7 +227,7 @@ public:
 
 	virtual FVector GetWeaponTargetLocation() override;
 
-	virtual void AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass) override;
+	virtual bool AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass) override;
 
 	UFUNCTION(BlueprintCallable, Category="Weapon", meta=(DisplayName="Give Weapon"))
 	void GiveWeapon(TSubclassOf<AShooterWeapon> WeaponClass) { AddWeaponClass(WeaponClass); }

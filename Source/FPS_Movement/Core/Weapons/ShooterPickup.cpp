@@ -62,15 +62,12 @@ void AShooterPickup::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AShooterPickup::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (IShooterWeaponHolder* WeaponHolder = Cast<IShooterWeaponHolder>(OtherActor))
+	IShooterWeaponHolder* WeaponHolder = Cast<IShooterWeaponHolder>(OtherActor);
+	if (WeaponHolder && WeaponClass && WeaponHolder->AddWeaponClass(WeaponClass))
 	{
-		WeaponHolder->AddWeaponClass(WeaponClass);
-
 		SetActorHiddenInGame(true);
 
 		SetActorEnableCollision(false);
-
-		SetActorTickEnabled(false);
 
 		GetWorld()->GetTimerManager().SetTimer(RespawnTimer, this, &AShooterPickup::RespawnPickup, RespawnTime, false);
 	}

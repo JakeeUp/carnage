@@ -104,7 +104,7 @@ public:
 
 	virtual FVector GetWeaponTargetLocation() override;
 
-	virtual void AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass) override;
+	virtual bool AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass) override;
 
 	virtual void OnWeaponActivated(AShooterWeapon* Weapon) override;
 

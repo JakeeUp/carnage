@@ -406,8 +406,13 @@ FVector AShooterCharacter::GetWeaponTargetLocation()
 	return OutHit.bBlockingHit ? OutHit.ImpactPoint : OutHit.TraceEnd;
 }
 
-void AShooterCharacter::AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass)
+bool AShooterCharacter::AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass)
 {
+	if (!WeaponClass || IsDead())
+	{
+		return false;
+	}
+
 	AShooterWeapon* OwnedWeapon = FindWeaponOfType(WeaponClass);
 
 	if (!OwnedWeapon)
@@ -431,8 +436,11 @@ void AShooterCharacter::AddWeaponClass(const TSubclassOf<AShooterWeapon>& Weapon
 
 			CurrentWeapon = AddedWeapon;
 			CurrentWeapon->ActivateWeapon();
+			return true;
 		}
 	}
+
+	return false;
 }
 
 void AShooterCharacter::OnWeaponActivated(AShooterWeapon* Weapon)
