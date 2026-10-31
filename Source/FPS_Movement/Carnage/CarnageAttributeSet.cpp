@@ -86,8 +86,9 @@ void UCarnageAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCal
 
 		OnDamageDealt.Broadcast(Source, Target, LocalIncoming, SpecAssetTags);
 
-		if (GetHealth() <= 0.0f)
+		if (GetHealth() <= 0.0f && !bDied)
 		{
+			bDied = true;
 			OnDied.Broadcast();
 		}
 		return;
@@ -109,8 +110,9 @@ void UCarnageAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCal
 	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
 		BroadcastHealthChanged();
-		if (GetHealth() <= 0.0f)
+		if (GetHealth() <= 0.0f && !bDied)
 		{
+			bDied = true;
 			OnDied.Broadcast();
 		}
 	}
