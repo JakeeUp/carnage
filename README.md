@@ -1,102 +1,113 @@
-# PROJECT CARNAGE
+# Project Carnage
 
-A first person movement shooter built in Unreal Engine 5.7 with C++.
-Doom Eternal aggression, Titanfall 2 flow, and a Devil May Cry style rank system stacked on top.
+A first-person movement shooter built in C++ with Unreal Engine 5.7. Momentum-based movement chains into aggressive combat, and a style rank system rewards varied play.
 
-> Working title. Built as a feel-first FPS sandbox where the whole point is movement and shooting that feel incredible to chain together.
-
-## Overall Progress
-
-```
-[##########################------]  78%
-```
-
-Core gameplay systems are in and fully playable. Remaining work is mostly animation wiring and HUD polish.
+![Gameplay](Docs/media/gameplay.gif)
+<!-- TODO: Record a short gameplay GIF (movement chain plus juggle combat, about 10 seconds) and save it to Docs/media/gameplay.gif. -->
 
 ## Features
 
-### Movement
-- [x] Sprint with momentum
-- [x] Momentum slide (distance scales with entry speed, slope acceleration, anti spam cooldown)
-- [x] Air dash with charges and recharge
-- [x] Wall running with momentum preservation and wall jumps
-- [x] Double jump with air control and input redirect
-- [x] Mantling onto ledges
-- [x] Forgiveness mechanics: coyote time, jump buffering, slide on land buffering
-- [x] Bunny hop momentum chaining
+**Movement**
+- Momentum slide with slope acceleration and sprint-slide boost
+- Air dash with charges and recharge
+- Wall run with momentum preservation and wall jumps
+- Mantle onto ledges
+- Double jump with air control, coyote time, and jump buffering
+- Bunny hop momentum chaining
 
-### Combat
-- [x] Hitscan and projectile fire modes
-- [x] Spring based recoil with recovery, procedural weapon kick and sway
-- [x] Reload system (reserve ammo, fire lockout, auto reload on empty)
-- [x] Headshots, hitmarkers, kill confirmation, kill hitstop
-- [x] Instant aim down sights and weapon wall avoidance (anti clip)
+**Combat**
+- Hitscan and projectile fire modes
+- Spring-based recoil with recovery, procedural weapon kick, and sway
+- Reload system with reserve ammo, fire lockout, and auto reload on empty
+- Headshots, hit confirmation, and kill hitstop
+- Aim down sights with weapon wall avoidance
+- Niagara muzzle flash and tracers
 
-### Style and Juggle
-- [x] Carnage Meter: a D to SSS rank that rewards varied, aggressive play
-- [x] Rank buffs: higher rank grants more move speed and more damage
-- [x] Juggle combat: slide to launch enemies, keep them airborne, slam them down, bounce them back up
+**Style and Juggle**
+- Carnage Meter: a D to SSS rank that rewards varied, aggressive play
+- Rank buffs: higher ranks grant more movement speed and more damage
+- Juggle combat: slide into enemies to launch them, keep them airborne, slam them down, and bounce them back up
 
-### In Progress
-- [ ] Wall run plays the run animation (Animation Blueprint wiring)
-- [ ] Combo meter HUD widget
-- [ ] Crosshair hides while aiming down sights
-- [ ] Reload and aim down sights animation polish
+**AI and Feedback**
+- Enemy AI driven by StateTree
+- Camera effects tied to movement: FOV changes, strafe and wall-run tilt, head bob, landing dip
 
-### Planned
-- [ ] NPC flinch and hit react animations
-- [ ] Unify NPC health onto the same Ability System the player uses
-- [ ] Promote slide, dash, and mantle to formal custom movement modes
-- [ ] Audio pass (hit, headshot, kill, and rank up sounds)
-- [ ] Additional weapons and a dedicated test arena
+## What I Built vs. Engine Template
+
+The project starts from the Unreal first-person template. This table shows which parts are original work.
+
+| Area | Built for this project | Starting point from Unreal |
+| :--- | :--- | :--- |
+| Character movement | `UDoomMovementComponent`: custom CharacterMovementComponent with slide, dash, wall run, mantle, and jump extensions | Default `CharacterMovementComponent` (replaced) |
+| Style system | `UStyleMeterComponent`: Carnage Meter with variety scoring and rank effects | None |
+| Combat | Juggle system, shared damage pipeline, headshot and kill resolution, hit feedback | Variant_Shooter sample projectiles and hit handling (extended) |
+| Weapons | Recoil spring, procedural kick, and sway (`UWeaponRecoilComponent`); hitscan and projectile fire modes | Variant_Shooter sample weapon actor (extended) |
+| Health | Gameplay Ability System layer (`UCarnageAttributeSet`, armor and health, native tags) | None |
+| Camera | `UDoomCameraEffectsComponent` and `UDoomCameraModifier` | Default first-person camera |
+| AI | StateTree tasks, EQS target context, juggle-aware NPC | Variant_Shooter sample AI controller and NPC (extended) |
+| Game framework | `AShooterPlayerController`, `AShooterGameMode`, HUD widgets | First-person template base classes and Variant_Shooter sample |
+
+## Tech Highlights
+
+- **Custom CharacterMovementComponent.** `UDoomMovementComponent` owns movement verbs and exposes `OnMovementAction` so other systems can react to traversal. An external speed scale lets systems boost movement without a direct dependency.
+- **GAS attribute set.** `UCarnageAttributeSet` manages health, armor, and an incoming damage meta-attribute. Damage is applied through a SetByCaller gameplay effect. Movement state is mirrored to native gameplay tags.
+- **StateTree AI.** Enemy behavior runs in StateTree with custom tasks and an Environment Query System context.
+- **Camera modifier.** Movement state drives a runtime camera modifier for FOV, tilt, and bob, decoupled from the character class.
+
+Architecture details are in [ARCHITECTURE.md](ARCHITECTURE.md). The Gameplay Ability System layer is described in [Docs/Systems/GAS.md](Docs/Systems/GAS.md).
 
 ## Controls
 
-Default bindings (set in the Enhanced Input mapping contexts and remappable in the editor):
+Default bindings from the Enhanced Input mapping contexts (`Content/Input/IMC_Default`, `Content/Input/IMC_MouseLook`, `Content/Variant_Shooter/Input/IMC_Weapons`). Bindings can be changed in the editor.
 
 | Action | Key |
 | :--- | :--- |
-| Move | WASD |
+| Move | W A S D |
 | Look | Mouse |
-| Jump and Double Jump | Space |
-| Sprint | Shift (hold) |
+| Jump, double jump | Space |
+| Sprint | Left Shift (hold) |
 | Slide | Left Ctrl |
 | Dash | Q |
-| Fire | Left Mouse |
-| Aim Down Sights | Right Mouse (hold) |
+| Fire | Left Mouse Button |
+| Aim down sights | Right Mouse Button (hold) |
 | Reload | R |
-| Swap Weapon | Mouse Wheel |
+| Swap weapon | TODO: confirm key (`IA_SwapWeapon`, expected mouse wheel) |
 
-## Built With
+## Build
 
-- Unreal Engine 5.7 and C++
-- Enhanced Input
-- Gameplay Ability System (player health, armor, and damage)
-- StateTree (enemy AI)
-- Niagara (muzzle flash and tracers)
-
-## Project Structure
-
-Source code lives under `Source/FPS_Movement/`:
-
-| Folder | Purpose |
-| :--- | :--- |
-| `Template/` | Unreal first person template base classes |
-| `Core/` | The game itself: player character, weapons, AI, UI, game mode |
-| `Movement/` | Custom character movement and the momentum system |
-| `Camera/` | Movement driven camera effects |
-| `Weapons/` | Recoil, sway, and weapon feel |
-| `Carnage/` | Player vitals through the Gameplay Ability System |
-
-See `ARCHITECTURE.md` for a full class by class breakdown and how the systems connect.
-
-## Building
+Requirements: Unreal Engine 5.7 and Visual Studio with the C++ game development workload. The project is developed on Windows 11 (Win64).
 
 1. Clone the repository.
-2. Right click `FPS_Movement.uproject` and choose Generate Visual Studio project files.
-3. Open the generated solution and build in Development Editor, Win64. You can also open the uproject directly and let the editor compile.
-4. Requires Unreal Engine 5.7.
+2. Download the required asset packs listed below and place them in the `Content/` folder.
+3. Right-click `FPS_Movement.uproject` and choose **Generate Visual Studio project files**.
+4. Open the generated solution and build the `FPS_MovementEditor` target in the **Development Editor** configuration, Win64.
+5. Open `FPS_Movement.uproject` to launch the editor.
 
-## Notes
+## Required Assets
 
-This project contains assets from the Unreal first person template and marketplace packs. It is kept private in line with those asset licenses.
+The following folders are excluded from the repository because they contain purchased or licensed content. They are listed in `.gitignore`. Each folder must be obtained separately and placed at the same path under the project's `Content/` directory.
+
+| Folder | Contents | Source pack | Placement |
+| :--- | :--- | :--- | :--- |
+| `Content/Characters/` | Third-person mannequin meshes, animations, and materials (`Mannequins/`) | TODO: confirm pack name | `Content/Characters/Mannequins/` |
+| `Content/FirstPersonPistolAnimations/` | First-person arms mesh, pistol animations, montages, and demo assets | First Person Pistol Animations (inferred from folder name; confirm the exact listing) | `Content/FirstPersonPistolAnimations/` |
+| `Content/Weapons/` | Pistol, rifle, and grenade launcher meshes, materials, and audio | TODO: confirm pack name | `Content/Weapons/` |
+
+Without these folders, the affected Blueprints and maps reference missing assets and will not load correctly.
+
+## Scope and Known Limitations
+
+- **Single-player only.** The movement component is not network-prediction-safe. Multiplayer would require replicated movement prediction, which is not implemented.
+- **NPC damage path.** Enemies apply damage through a simple `CurrentHP` path rather than the Gameplay Ability System used by the player. Unifying them onto the same system is planned.
+- **Abilities.** Dash and slide currently run on the movement component. Routing them through Gameplay Abilities is planned.
+
+Planned work and open items are tracked in [Docs/ROADMAP.md](Docs/ROADMAP.md).
+
+## Repository Layout
+
+| Path | Contents |
+| :--- | :--- |
+| `Source/FPS_Movement/` | C++ gameplay code |
+| `Content/` | Blueprints, maps, input assets, and UI (asset packs excluded, see above) |
+| `Config/` | Engine, game, and input configuration |
+| `Docs/` | Design notes, roadmap, and setup guides |
