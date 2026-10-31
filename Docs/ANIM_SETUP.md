@@ -34,7 +34,7 @@ Tunables on the weapon: **Reserve Ammo** (90), **Auto Reload On Empty** (true), 
 
 ## 2. Wall run plays the run animation (AnimBP)
 
-The movement component already exposes everything; the AnimBP just needs to read it. Open your
+The movement component already exposes everything; the AnimBP just needs to read it. Open the
 **first-person arms AnimBP** (`ABP_ShooterArms`, or `Variant_Shooter/Anims/ABP_FP_Pistol`).
 
 ### a) Read the wall-run flag
@@ -61,14 +61,14 @@ wall-run frames — because the wall run keeps your velocity high (~1000+).
 
 The C++ broadcasts to the HUD whenever you aim — you implement the event on the widget that holds the crosshair.
 
-1. Open the HUD widget with the crosshair (likely **`UI_ShooterBulletCounter`** in `Variant_Shooter/UI/`).
+1. Open the HUD widget with the crosshair (**`UI_ShooterBulletCounter`** in `Variant_Shooter/UI/`).
 2. In the **Graph**, right-click → add the event **Set Aiming Down Sights** (it's a BlueprintImplementableEvent
    the C++ now calls; it has a `bIsAimingDownSights` bool).
 3. From it: **Set Visibility** on your crosshair image → **Hidden** when `bIsAimingDownSights` is true,
    **Visible** when false. (Branch on the bool.) Compile + Save.
 
-If your crosshair lives in a *different* widget than the bullet counter, tell me and I'll route the event there
-instead — right now it's wired to the bullet-counter widget (the one the player controller already feeds).
+If the crosshair lives in a *different* widget than the bullet counter, route the event to that widget instead.
+By default the event is wired to the bullet-counter widget, which the player controller already feeds.
 
 ### Reserve ammo readout (optional)
 Same widget now also receives **Update Reserve Ammo** (`ReserveAmmo` int) — bind it to a text block if you want
@@ -90,5 +90,5 @@ Almost always blend timing. Three usual culprits:
 
 ---
 
-*All C++ hooks referenced above already exist and compile. If any step's asset/option name differs in your
-project, tell me what you see and I'll adjust.*
+*All C++ hooks referenced above exist in the current source. If an asset or option name differs in your project,
+update this guide to match.*
