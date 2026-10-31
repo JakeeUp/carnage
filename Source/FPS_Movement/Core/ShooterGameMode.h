@@ -18,6 +18,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Shooter")
 	TSubclassOf<UShooterUI> ShooterUIClass;
 
+	UPROPERTY()
 	TObjectPtr<UShooterUI> ShooterUI;
 
 	TMap<uint8, int32> TeamScores;

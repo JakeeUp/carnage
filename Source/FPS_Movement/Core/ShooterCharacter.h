@@ -137,8 +137,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Team")
 	FName DeathTag = FName("Dead");
 
-	TArray<AShooterWeapon*> OwnedWeapons;
+	UPROPERTY()
+	TArray<TObjectPtr<AShooterWeapon>> OwnedWeapons;
 
+	UPROPERTY()
 	TObjectPtr<AShooterWeapon> CurrentWeapon;
 
 	UPROPERTY(EditAnywhere, Category ="Destruction", meta = (ClampMin = 0, ClampMax = 10, Units = "s"))

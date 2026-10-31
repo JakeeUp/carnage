@@ -38,6 +38,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Team")
 	FName DeathTag = FName("Dead");
 
+	UPROPERTY()
 	TObjectPtr<AShooterWeapon> Weapon;
 
 	UPROPERTY(EditAnywhere, Category="Weapon")
