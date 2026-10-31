@@ -94,9 +94,9 @@ FVector AShooterNPC::GetWeaponTargetLocation()
 
 	FVector AimDir, AimTarget = FVector::ZeroVector;
 
-	if (CurrentAimTarget)
+	if (const AActor* AimActor = CurrentAimTarget.Get())
 	{
-		AimTarget = CurrentAimTarget->GetActorLocation();
+		AimTarget = AimActor->GetActorLocation();
 
 		AimTarget.Z += FMath::RandRange(MinAimOffsetZ, MaxAimOffsetZ);
 

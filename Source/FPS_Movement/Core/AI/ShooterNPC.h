@@ -61,7 +61,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Aim")
 	float MaxAimOffsetZ = -60.0f;
 
-	TObjectPtr<AActor> CurrentAimTarget;
+	TWeakObjectPtr<AActor> CurrentAimTarget;
 
 	bool bIsShooting = false;
 
