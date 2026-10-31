@@ -13,9 +13,14 @@ AShooterAIController::AShooterAIController()
 	StateTreeAI->SetStartLogicAutomatically(false);
 
 	AIPerception = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("AIPerception"));
+}
 
-	AIPerception->OnTargetPerceptionUpdated.AddDynamic(this, &AShooterAIController::OnPerceptionUpdated);
-	AIPerception->OnTargetPerceptionForgotten.AddDynamic(this, &AShooterAIController::OnPerceptionForgotten);
+void AShooterAIController::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	AIPerception->OnTargetPerceptionUpdated.AddUniqueDynamic(this, &AShooterAIController::OnPerceptionUpdated);
+	AIPerception->OnTargetPerceptionForgotten.AddUniqueDynamic(this, &AShooterAIController::OnPerceptionForgotten);
 }
 
 void AShooterAIController::OnPossess(APawn* InPawn)
@@ -26,7 +31,7 @@ void AShooterAIController::OnPossess(APawn* InPawn)
 	{
 		NPC->Tags.Add(TeamTag);
 
-		NPC->OnPawnDeath.AddDynamic(this, &AShooterAIController::OnPawnDeath);
+		NPC->OnPawnDeath.AddUniqueDynamic(this, &AShooterAIController::OnPawnDeath);
 
 		StateTreeAI->StartLogic();
 	}
@@ -34,7 +39,21 @@ void AShooterAIController::OnPossess(APawn* InPawn)
 
 void AShooterAIController::OnPawnDeath()
 {
-	GetPathFollowingComponent()->AbortMove(*this, FPathFollowingResultFlags::UserAbort);
+	// Defer teardown so the NPC finishes its Die() (ragdoll setup) first.
+	GetWorldTimerManager().SetTimerForNextTick(this, &AShooterAIController::TeardownAfterDeath);
+}
+
+void AShooterAIController::TeardownAfterDeath()
+{
+	if (AShooterNPC* NPC = Cast<AShooterNPC>(GetPawn()))
+	{
+		NPC->OnPawnDeath.RemoveDynamic(this, &AShooterAIController::OnPawnDeath);
+	}
+
+	if (UPathFollowingComponent* PathComp = GetPathFollowingComponent())
+	{
+		PathComp->AbortMove(*this, FPathFollowingResultFlags::UserAbort);
+	}
 
 	StateTreeAI->StopLogic(FString(""));
 

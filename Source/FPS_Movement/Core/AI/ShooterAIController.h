@@ -29,7 +29,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Shooter")
 	FName TeamTag = FName("Enemy");
 
-	TObjectPtr<AActor> TargetEnemy;
+	TWeakObjectPtr<AActor> TargetEnemy;
 
 public:
 
@@ -43,6 +43,8 @@ public:
 
 protected:
 
+	virtual void PostInitializeComponents() override;
+
 	virtual void OnPossess(APawn* InPawn) override;
 
 protected:
@@ -50,13 +52,15 @@ protected:
 	UFUNCTION()
 	void OnPawnDeath();
 
+	void TeardownAfterDeath();
+
 public:
 
 	void SetCurrentTarget(AActor* Target);
 
 	void ClearCurrentTarget();
 
-	AActor* GetCurrentTarget() const { return TargetEnemy; };
+	AActor* GetCurrentTarget() const { return TargetEnemy.Get(); };
 
 protected:
 
