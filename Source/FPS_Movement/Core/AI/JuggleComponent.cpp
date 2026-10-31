@@ -7,6 +7,7 @@
 UJuggleComponent::UJuggleComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 	PrimaryComponentTick.TickGroup = TG_PostPhysics;
 }
 
@@ -118,5 +119,6 @@ void UJuggleComponent::SetJuggled(bool bNewJuggled)
 	}
 
 	bIsJuggled = bNewJuggled;
+	SetComponentTickEnabled(bIsJuggled);
 	OnJuggleStateChanged.Broadcast(bIsJuggled);
 }
