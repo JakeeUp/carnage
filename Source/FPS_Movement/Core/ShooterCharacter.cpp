@@ -624,6 +624,11 @@ void AShooterCharacter::NotifyDamageDealt(AActor* Target, float DamageDealt, boo
 
 		if (bEnableKillHitStop && GetWorld())
 		{
+			if (!GetWorld()->GetTimerManager().IsTimerActive(HitStopTimer))
+			{
+				PreHitStopTimeDilation = UGameplayStatics::GetGlobalTimeDilation(this);
+			}
+
 			UGameplayStatics::SetGlobalTimeDilation(this, HitStopTimeDilation);
 
 			GetWorld()->GetTimerManager().SetTimer(
@@ -635,7 +640,7 @@ void AShooterCharacter::NotifyDamageDealt(AActor* Target, float DamageDealt, boo
 
 void AShooterCharacter::EndHitStop()
 {
-	UGameplayStatics::SetGlobalTimeDilation(this, 1.0f);
+	UGameplayStatics::SetGlobalTimeDilation(this, PreHitStopTimeDilation);
 }
 
 void AShooterCharacter::HandleHealthChanged(float NewHealthPercent)

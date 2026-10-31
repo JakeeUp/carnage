@@ -307,6 +307,8 @@ protected:
 
 	FTimerHandle HitStopTimer;
 
+	float PreHitStopTimeDilation = 1.0f;
+
 public:
 
 	bool IsDead() const;
