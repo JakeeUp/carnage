@@ -424,7 +424,9 @@ void UWeaponRecoilComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		+ (MoveSwayOffset + FVector(0.0f, 0.0f, LandingOffset)) * MoveScale
 		+ KickLocation
 		+ (SprintPoseLocation * SprintPoseAlpha + SlidePoseLocation * SlidePoseAlpha) * PoseScale;
-	OffsetLocation.X -= CurrentWallPullback;
+	// First-person rendering already prevents wall clipping; the pullback is a hip-fire nicety only.
+	// In ADS it would drag the sights into the eye, so it fades out with the ADS alpha.
+	OffsetLocation.X -= CurrentWallPullback * (1.0f - Alpha);
 
 	const FRotator OffsetRotation =
 		  FRotator(LookLag.Pitch, LookLag.Yaw, LookLag.Yaw * 0.35f) * (LookSwayScale * SwayScale)
@@ -446,8 +448,15 @@ void UWeaponRecoilComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	if (Alpha > 0.0f && ComputeSightInArms(SightInArms))
 	{
 		const FTransform Target(FQuat::Identity, FVector(GetSafeEyeRelief(Weapon), 0.0f, 0.0f));
-		const FTransform AdsTransform = SightInArms.Inverse() * Offset * Target;
-		Final = BlendTransforms(HipTransform, AdsTransform, Alpha);
+
+		// Blend the SIGHT's camera-space transform, not the arms root. The arms root sits far
+		// below the camera, so slerping it swings the gun in a huge arc (it leaves the screen
+		// mid-transition). Blending about the sight makes the gun glide straight to the eye.
+		// Endpoints are unchanged: Alpha 0 = HipTransform, Alpha 1 = S^-1 * Offset * Target.
+		const FTransform HipSight = SightInArms * HipTransform;
+		const FTransform AdsSight = Offset * Target;
+		const FTransform BlendedSight = BlendTransforms(HipSight, AdsSight, Alpha);
+		Final = SightInArms.Inverse() * BlendedSight;
 	}
 
 	// ── 10. View punch: camera modifier + matching viewmodel rotation ───
