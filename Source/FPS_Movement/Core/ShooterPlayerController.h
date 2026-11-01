@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
-#include "GameplayTagContainer.h"
 #include "ShooterPlayerController.generated.h"
 
 class UInputMappingContext;
@@ -24,8 +23,8 @@ public:
 	/**
 	 * Show a damage direction marker on the HUD pointing at a world-space source (attacker or
 	 * projectile origin). Safe to call on any controller; no-op without a local HUD.
-	 * Called automatically from the possessed pawn's Carnage attribute set (OnDamageDealt) when
-	 * bAutoDamageDirectionFromAttributes is set; duplicate reports within a few frames are merged.
+	 * Called automatically from the possessed character's OnDamageSource; duplicate reports
+	 * within a few frames are merged.
 	 */
 	UFUNCTION(BlueprintCallable, Category="Shooter|UI")
 	void NotifyDamageFrom(const FVector& WorldSourceLocation);
@@ -65,10 +64,6 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Shooter|UI")
 	TSubclassOf<UShooterHUDWidget> HUDClass;
 
-	/** Feed damage direction markers from the pawn's attribute set damage event (effect causer / its instigator). */
-	UPROPERTY(EditAnywhere, Category="Shooter|UI")
-	bool bAutoDamageDirectionFromAttributes = true;
-
 	UPROPERTY(Transient)
 	TObjectPtr<UShooterHUDWidget> HUDWidget;
 
@@ -90,7 +85,7 @@ protected:
 	void EnsureHUD();
 
 	UFUNCTION()
-	void OnPawnDamageDealt(AActor* Source, AActor* Target, float DamageAmount, const FGameplayTagContainer& DamageTags);
+	void OnPawnDamageSource(FVector SourceLocation);
 
 	UFUNCTION()
 	void OnPawnDestroyed(AActor* DestroyedActor);

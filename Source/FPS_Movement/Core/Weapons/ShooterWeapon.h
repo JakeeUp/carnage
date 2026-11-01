@@ -228,6 +228,9 @@ public:
 	bool IsReloading() const { return bIsReloading; }
 
 	UFUNCTION(BlueprintPure, Category="Weapon")
+	float GetReloadDuration() const { return ReloadDuration; }
+
+	UFUNCTION(BlueprintPure, Category="Weapon")
 	bool CanReload() const;
 
 protected:

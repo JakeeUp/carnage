@@ -9,7 +9,6 @@
 #include "ShooterCharacter.h"
 #include "ShooterBulletCounterUI.h"
 #include "ShooterHUDWidget.h"
-#include "CarnageAttributeSet.h"
 #include "FPS_Movement.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
@@ -97,17 +96,9 @@ void AShooterPlayerController::NotifyDamageFrom(const FVector& WorldSourceLocati
 	}
 }
 
-void AShooterPlayerController::OnPawnDamageDealt(AActor* Source, AActor* Target, float DamageAmount, const FGameplayTagContainer& DamageTags)
+void AShooterPlayerController::OnPawnDamageSource(FVector SourceLocation)
 {
-	if (!bAutoDamageDirectionFromAttributes || !Source || DamageAmount <= 0.0f || Source == GetPawn())
-	{
-		return;
-	}
-
-	// Prefer the shooter over the projectile/weapon that actually applied the damage.
-	const APawn* InstigatorPawn = Source->GetInstigator();
-	const AActor* Origin = (InstigatorPawn && InstigatorPawn != GetPawn()) ? static_cast<const AActor*>(InstigatorPawn) : Source;
-	NotifyDamageFrom(Origin->GetActorLocation());
+	NotifyDamageFrom(SourceLocation);
 }
 
 void AShooterPlayerController::SetupInputComponent()
@@ -149,11 +140,8 @@ void AShooterPlayerController::OnPossess(APawn* InPawn)
 		ShooterCharacter->OnReserveAmmoUpdated.AddDynamic(this, &AShooterPlayerController::OnReserveAmmoUpdated);
 		ShooterCharacter->OnAimStateChanged.AddDynamic(this, &AShooterPlayerController::OnAimStateChanged);
 
-		// Incoming damage on our own attribute set drives the HUD damage direction markers.
-		if (UCarnageAttributeSet* Attributes = const_cast<UCarnageAttributeSet*>(ShooterCharacter->GetAttributeSet()))
-		{
-			Attributes->OnDamageDealt.AddUniqueDynamic(this, &AShooterPlayerController::OnPawnDamageDealt);
-		}
+		// The character reports where incoming damage came from; the HUD turns it into a direction marker.
+		ShooterCharacter->OnDamageSource.AddUniqueDynamic(this, &AShooterPlayerController::OnPawnDamageSource);
 
 		// Re-bind the native HUD to the new (or respawned) pawn.
 		EnsureHUD();

@@ -367,43 +367,13 @@ void UShooterHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 AShooterWeapon* UShooterHUDWidget::FindActiveWeapon() const
 {
 	const AShooterCharacter* Character = BoundCharacter.Get();
-	if (!Character)
-	{
-		return nullptr;
-	}
-
-	// Weapons attach to the holder and hide themselves when deactivated.
-	TArray<AActor*> Attached;
-	Character->GetAttachedActors(Attached);
-	for (AActor* Actor : Attached)
-	{
-		if (AShooterWeapon* Weapon = Cast<AShooterWeapon>(Actor))
-		{
-			if (!Weapon->IsHidden())
-			{
-				return Weapon;
-			}
-		}
-	}
-	return nullptr;
+	return Character ? Character->GetCurrentWeapon() : nullptr;
 }
 
 float UShooterHUDWidget::ReadReloadDuration(const AShooterWeapon* Weapon) const
 {
-	// Read-only reflection lookup of the weapon's tuned reload time (no public getter exists).
-	static const FName ReloadDurationName(TEXT("ReloadDuration"));
-	if (Weapon)
-	{
-		if (const FFloatProperty* Prop = FindFProperty<FFloatProperty>(Weapon->GetClass(), ReloadDurationName))
-		{
-			const float Value = Prop->GetPropertyValue_InContainer(Weapon);
-			if (Value > KINDA_SMALL_NUMBER)
-			{
-				return Value;
-			}
-		}
-	}
-	return FallbackReloadDuration;
+	const float Duration = Weapon ? Weapon->GetReloadDuration() : 0.0f;
+	return Duration > KINDA_SMALL_NUMBER ? Duration : FallbackReloadDuration;
 }
 
 void UShooterHUDWidget::TickAmmo(float Dt)
@@ -444,7 +414,16 @@ void UShooterHUDWidget::TickAmmo(float Dt)
 
 void UShooterHUDWidget::TickCrosshair(float Dt)
 {
-	ADSAlpha = FMath::Clamp(SmoothDamp(ADSAlpha, bAimTarget ? 1.0f : 0.0f, ADSVelocity, ADSSmoothTime, Dt), 0.0f, 1.0f);
+	// Read the character's ADS spring directly so the crosshair fades in lockstep with the viewmodel/FOV.
+	if (const AShooterCharacter* AimChar = BoundCharacter.Get())
+	{
+		ADSAlpha = FMath::Clamp(AimChar->GetADSAlpha(), 0.0f, 1.0f);
+		ADSVelocity = 0.0f;
+	}
+	else
+	{
+		ADSAlpha = FMath::Clamp(SmoothDamp(ADSAlpha, bAimTarget ? 1.0f : 0.0f, ADSVelocity, ADSSmoothTime, Dt), 0.0f, 1.0f);
+	}
 
 	Bloom = ExpDecay(Bloom, BloomRecoveryRate, Dt);
 
