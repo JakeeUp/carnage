@@ -13,6 +13,7 @@
 #include "ShooterCharacter.h"
 #include "ShooterWeapon.h"
 #include "UObject/ConstructorHelpers.h"
+#include "ShooterWeapon.h"
 
 namespace AimTrainer
 {
@@ -94,8 +95,9 @@ ACarnageAimTrainer::ACarnageAimTrainer()
 		Targets[i].Mesh = Mesh;
 	}
 
-	static const ECarnageAimMode ButtonModes[] = { ECarnageAimMode::Gridshot, ECarnageAimMode::Microshot, ECarnageAimMode::Tracking, ECarnageAimMode::Count };
-	static const TCHAR* ButtonLabels[] = { TEXT("GRIDSHOT"), TEXT("MICROSHOT"), TEXT("TRACKING"), TEXT("START") };
+	// The fifth entry is the INF AMMO toggle (its Mode is unused).
+	static const ECarnageAimMode ButtonModes[] = { ECarnageAimMode::Gridshot, ECarnageAimMode::Microshot, ECarnageAimMode::Tracking, ECarnageAimMode::Count, ECarnageAimMode::Count };
+	static const TCHAR* ButtonLabels[] = { TEXT("GRIDSHOT"), TEXT("MICROSHOT"), TEXT("TRACKING"), TEXT("START"), TEXT("INF AMMO") };
 	Buttons.SetNum(UE_ARRAY_COUNT(ButtonModes));
 	for (int32 i = 0; i < Buttons.Num(); ++i)
 	{
@@ -104,6 +106,7 @@ ACarnageAimTrainer::ACarnageAimTrainer()
 		Button.Mesh = AimTrainer::MakeMesh(this, ConsoleRoot, *FString::Printf(TEXT("Button%d"), i), UCollisionProfile::BlockAllDynamic_ProfileName);
 		Button.Label = AimTrainer::MakeText(this, ConsoleRoot, *FString::Printf(TEXT("ButtonLabel%d"), i));
 		Button.Label->SetText(FText::FromString(ButtonLabels[i]));
+		Button.bInfiniteAmmoToggle = (i == UE_ARRAY_COUNT(ButtonModes) - 1);
 	}
 }
 
@@ -161,13 +164,16 @@ void ACarnageAimTrainer::ApplyLayout()
 	ConsolePedestal->SetRelativeLocation(FVector(0.0f, 0.0f, PedestalHeight * 0.5f));
 	ConsolePedestal->SetRelativeScale3D(FVector(50.0f, 260.0f, PedestalHeight) / BasicShapeSize);
 
-	// 2x2 buttons standing on the pedestal, labels on their front faces.
+	// Two-column grid of buttons standing on the pedestal (top row first), labels on their front faces.
+	// An odd button out is centred on the bottom row.
 	const FVector ButtonSize(16.0f, 115.0f, 45.0f);
+	const int32 NumRows = (Buttons.Num() + 1) / 2;
 	for (int32 i = 0; i < Buttons.Num(); ++i)
 	{
-		const int32 Col = i % 2;
-		const int32 Row = 1 - i / 2;
-		const FVector Pos(-10.0f, (Col - 0.5f) * (ButtonSize.Y + 10.0f), PedestalHeight + 5.0f + ButtonSize.Z * 0.5f + Row * (ButtonSize.Z + 8.0f));
+		const int32 Row = (NumRows - 1) - i / 2;
+		const bool bAlone = (i == Buttons.Num() - 1) && (Buttons.Num() % 2 == 1);
+		const float ColOffset = bAlone ? 0.0f : ((i % 2) - 0.5f);
+		const FVector Pos(-10.0f, ColOffset * (ButtonSize.Y + 10.0f), PedestalHeight + 5.0f + ButtonSize.Z * 0.5f + Row * (ButtonSize.Z + 8.0f));
 
 		Buttons[i].Mesh->SetStaticMesh(CubeMesh);
 		Buttons[i].Mesh->SetRelativeLocation(Pos);
@@ -311,6 +317,13 @@ bool ACarnageAimTrainer::HandleShot(const FShooterHitInfo& Hit, FShooterHitOutco
 
 	for (const FCarnageAimButton& Button : Buttons)
 	{
+		if (Button.Mesh == Hit.HitComponent && Button.bInfiniteAmmoToggle)
+		{
+			AShooterWeapon::SetGlobalInfiniteAmmo(!AShooterWeapon::IsGlobalInfiniteAmmo());
+			RefreshButtons();
+			OutOutcome.DamageDealt = 1.0f;
+			return true;
+		}
 		if (Button.Mesh == Hit.HitComponent)
 		{
 			StartRun(Button.Mode == ECarnageAimMode::Count ? Mode : Button.Mode);
@@ -788,6 +801,15 @@ void ACarnageAimTrainer::RefreshButtons()
 {
 	for (FCarnageAimButton& Button : Buttons)
 	{
+		if (Button.bInfiniteAmmoToggle)
+		{
+			const bool bOn = AShooterWeapon::IsGlobalInfiniteAmmo();
+			// Dark when off so the state reads at a glance from the firing line, not just from the label.
+			constexpr float OffBrightness = 0.12f;
+			SetColor(Button.MID, bOn ? StartButtonColor : ButtonColor * OffBrightness, 1.0f);
+			Button.Label->SetText(FText::FromString(bOn ? TEXT("INF AMMO: ON") : TEXT("INF AMMO: OFF")));
+			continue;
+		}
 		const bool bStart = Button.Mode == ECarnageAimMode::Count;
 		const bool bSelected = !bStart && Button.Mode == Mode && RunState != ERunState::Idle;
 		SetColor(Button.MID, bStart ? StartButtonColor : (bSelected ? ButtonSelectedColor : ButtonColor), 1.0f);

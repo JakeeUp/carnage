@@ -469,6 +469,7 @@ void UShooterHUDWidget::TickAmmo(float Dt)
 	// Poll as a safety net (covers delegates that fired before we bound).
 	ApplyAmmo(Weapon->GetMagazineSize(), Weapon->GetBulletCount());
 	Reserve = Weapon->GetReserveAmmo();
+	bInfiniteAmmo = Weapon->HasInfiniteAmmo();
 
 	const UWorld* World = GetWorld();
 	const float GameNow = World ? World->GetTimeSeconds() : Now;
@@ -960,7 +961,7 @@ void UShooterHUDWidget::PaintAmmo(const FPainter& P) const
 	const FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle("BoldCondensed", 11);
 
 	const float Baseline = Origin.Y + 76.0f;
-	const FString ResStr = FString::Printf(TEXT("/ %d"), Reserve);
+	const FString ResStr = bInfiniteAmmo ? FString(TEXT("/ INF")) : FString::Printf(TEXT("/ %d"), Reserve);
 	const FVector2f ResSize = P.Text(ResStr, ResFont, FVector2f(BR.X - 18.0f, Baseline), FVector2f(1.0f, 1.0f),
 		WithAlpha(Reserve > 0 ? ColorPrimary : ColorDanger, 0.7f), 1.0f, &ColorShadow, 4);
 
@@ -1168,7 +1169,7 @@ void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
 		const bool bEmpty = Bullets <= 0;
 		const bool bLow = Bullets <= FMath::CeilToInt(MagSize * LowAmmoFraction);
 		const int32 MagDigits = FMath::Max(2, FString::FromInt(MagSize).Len());
-		const FString Mag = FString::Printf(TEXT("MAG %s / %s"), *ZeroPad(Bullets, MagDigits), *ZeroPad(Reserve, 3));
+		const FString Mag = FString::Printf(TEXT("MAG %s / %s"), *ZeroPad(Bullets, MagDigits), bInfiniteAmmo ? TEXT("INF") : *ZeroPad(Reserve, 3));
 		Row(OSDMag, Mag, Right, Bottom, 1.0f, bLow ? AlertCol : TextCol);
 
 		const float StatusY = Bottom - RowStep;

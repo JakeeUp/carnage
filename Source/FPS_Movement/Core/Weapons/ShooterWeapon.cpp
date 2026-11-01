@@ -2,6 +2,7 @@
 
 #include "ShooterWeapon.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "ShooterProjectile.h"
@@ -424,6 +425,14 @@ void AShooterWeapon::FireShot()
 	--CurrentBullets;
 	WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
 
+	// Infinite ammo still reports the shot (HUD bloom and the aim trainer count magazine drops),
+	// then immediately refills so the player never reloads.
+	if (HasInfiniteAmmo())
+	{
+		CurrentBullets = MagazineSize;
+		WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
+	}
+
 	TimeOfLastShot = GetWorld()->GetTimeSeconds();
 
 	if (PawnOwner.IsValid())
@@ -752,4 +761,40 @@ const TSubclassOf<UAnimInstance>& AShooterWeapon::GetFirstPersonAnimInstanceClas
 const TSubclassOf<UAnimInstance>& AShooterWeapon::GetThirdPersonAnimInstanceClass() const
 {
 	return ThirdPersonAnimInstanceClass;
+}
+
+// ============================
+// Infinite ammo
+// ============================
+
+static TAutoConsoleVariable<int32> CVarInfiniteAmmo(
+	TEXT("carnage.InfiniteAmmo"), 0,
+	TEXT("1 = shots never consume ammo for any weapon (practice / showcase)."));
+
+bool AShooterWeapon::HasInfiniteAmmo() const
+{
+	return bInfiniteAmmo || IsGlobalInfiniteAmmo();
+}
+
+void AShooterWeapon::SetInfiniteAmmo(bool bEnabled)
+{
+	bInfiniteAmmo = bEnabled;
+	if (HasInfiniteAmmo() && CurrentBullets < MagazineSize && !bIsReloading)
+	{
+		CurrentBullets = MagazineSize;
+		if (WeaponOwner)
+		{
+			WeaponOwner->UpdateWeaponHUD(CurrentBullets, MagazineSize);
+		}
+	}
+}
+
+void AShooterWeapon::SetGlobalInfiniteAmmo(bool bEnabled)
+{
+	CVarInfiniteAmmo->Set(bEnabled ? 1 : 0, ECVF_SetByCode);
+}
+
+bool AShooterWeapon::IsGlobalInfiniteAmmo()
+{
+	return CVarInfiniteAmmo.GetValueOnGameThread() != 0;
 }

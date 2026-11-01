@@ -68,6 +68,9 @@ struct FCarnageAimButton
 
 	/** Mode this button starts, or Count for START (replay the current mode). */
 	ECarnageAimMode Mode = ECarnageAimMode::Count;
+
+	/** This button toggles infinite ammo instead of starting a run. */
+	bool bInfiniteAmmoToggle = false;
 };
 
 /**

@@ -556,6 +556,9 @@ private:
 	int32 MagSize = 0;
 	int32 Bullets = 0;
 	int32 Reserve = 0;
+
+	/** The bound weapon doesn't consume ammo; the reserve reads INF. */
+	bool bInfiniteAmmo = false;
 	float AmmoPunch = 0.0f;
 	bool bReloading = false;
 	float ReloadStartGameTime = 0.0f;

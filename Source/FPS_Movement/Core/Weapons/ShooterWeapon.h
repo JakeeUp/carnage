@@ -57,6 +57,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Ammo")
 	bool bAutoReloadOnEmpty = true;
 
+	/** Shots never consume ammo (practice / showcase). See also carnage.InfiniteAmmo. */
+	UPROPERTY(EditAnywhere, Category="Ammo")
+	bool bInfiniteAmmo = false;
+
 	UPROPERTY(EditAnywhere, Category="Ammo", meta = (ClampMin = 0.1, ClampMax = 5, Units = "s"))
 	float ReloadDuration = 1.5f;
 
@@ -387,6 +391,24 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	int32 GetReserveAmmo() const { return ReserveAmmo; }
+
+	/**
+	 * True when shots don't consume ammo: this weapon's bInfiniteAmmo, or the global
+	 * carnage.InfiniteAmmo console variable (toggled by the aim trainer's INF AMMO button).
+	 */
+	UFUNCTION(BlueprintPure, Category="Weapon")
+	bool HasInfiniteAmmo() const;
+
+	/** Per-weapon infinite ammo. Turning it on also tops up the magazine. */
+	UFUNCTION(BlueprintCallable, Category="Weapon")
+	void SetInfiniteAmmo(bool bEnabled);
+
+	/** Session-wide infinite ammo for every weapon (the carnage.InfiniteAmmo console variable). */
+	UFUNCTION(BlueprintCallable, Category="Weapon")
+	static void SetGlobalInfiniteAmmo(bool bEnabled);
+
+	UFUNCTION(BlueprintPure, Category="Weapon")
+	static bool IsGlobalInfiniteAmmo();
 
 	// ════════════════════════════════════════════════════════════════════
 	// ADS (aim down sights) — read by AShooterCharacter / UWeaponRecoilComponent.
