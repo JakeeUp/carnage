@@ -5,9 +5,9 @@ Open work for Project Carnage, grouped by status. Items are removed when they sh
 ## In Progress
 
 - Wall run plays the run animation (Animation Blueprint wiring; see [ANIM_SETUP.md](ANIM_SETUP.md))
-- Combo meter HUD widget
-- Crosshair hides while aiming down sights (see [ANIM_SETUP.md](ANIM_SETUP.md))
-- Reload and aim down sights animation polish
+- Reload animation polish
+- Remove the leftover "CAST OK" Print String node in `ABP_ShooterArms` and its unused ADS state machine (C++ now owns ADS)
+- Surface-type impact FX via physical materials (hits already return the physical material)
 
 ## Planned
 
