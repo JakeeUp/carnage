@@ -49,12 +49,49 @@ static TAutoConsoleVariable<float> CVarBodycamGrain(
 	TEXT("Bodycam film grain multiplier, 0..1."),
 	ECVF_Default);
 
+static TAutoConsoleVariable<float> CVarBodycamDamageStatic(
+	TEXT("carnage.Bodycam.DamageStatic"),
+	1.0f,
+	TEXT("Bodycam red damage static and low-health static multiplier, 0..1 (0 removes the flashing)."),
+	ECVF_Default);
+
+#if !UE_BUILD_SHIPPING
+static TAutoConsoleVariable<float> CVarBodycamDamageTest(
+	TEXT("carnage.Debug.BodycamDamageTest"),
+	0.0f,
+	TEXT("Simulates a hit on the local player's bodycam damage static: the value is the health drop\n")
+	TEXT("(0.02 light, 0.2 heavy). Fires once (after carnage.Debug.BodycamDamageTestDelay) and resets to 0.\n")
+	TEXT("No damage is dealt. Example: carnage.Debug.BodycamDamageTest 0.15"),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarBodycamDamageTestDelay(
+	TEXT("carnage.Debug.BodycamDamageTestDelay"),
+	0.0f,
+	TEXT("Seconds between carnage.Debug.BodycamDamageTest being picked up and the simulated hit\n")
+	TEXT("(e.g. 0.9 to land the burst in FeelCapture's 1.0 s screenshot)."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarBodycamHealthOverride(
+	TEXT("carnage.Debug.BodycamHealthOverride"),
+	-1.0f,
+	TEXT("Health fraction (0..1) the bodycam low-health static uses instead of the real health; -1 = off."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarBodycamDamageHold(
+	TEXT("carnage.Debug.BodycamDamageHold"),
+	-1.0f,
+	TEXT("Pins the bodycam damage static impulse (0..1) for screenshots and tuning; -1 = off."),
+	ECVF_Default);
+#endif
+
 namespace BodycamLocal
 {
 	static const FName ParamDistortion(TEXT("Distortion"));
 	static const FName ParamChromaticAberration(TEXT("ChromaticAberration"));
 	static const FName ParamBorder(TEXT("Border"));
 	static const FName ParamRollingShutter(TEXT("RollingShutter"));
+	static const FName ParamDamageStatic(TEXT("DamageStatic"));
+	static const FName ParamLowHealthStatic(TEXT("LowHealthStatic"));
 
 	/** Level rules are a level-start default: apply them once per world, not on every respawn. */
 	static TWeakObjectPtr<UWorld> LevelRulesAppliedWorld;
@@ -139,6 +176,12 @@ void UBodycamComponent::BeginPlay()
 		PrimaryComponentTick.AddPrerequisite(Owner, Owner->PrimaryActorTick);
 	}
 
+	if (AShooterCharacter* Shooter = Cast<AShooterCharacter>(GetOwner()))
+	{
+		Shooter->OnDamaged.AddUniqueDynamic(this, &UBodycamComponent::HandleOwnerDamaged);
+		Shooter->OnDamageSource.AddUniqueDynamic(this, &UBodycamComponent::HandleOwnerDamageSource);
+	}
+
 	// Possession can happen after BeginPlay, so the local-player setup (level rules, console
 	// variable sync) runs on the first tick that finds a local player controller.
 	if (GetLocalPlayerController())
@@ -149,6 +192,11 @@ void UBodycamComponent::BeginPlay()
 
 void UBodycamComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (AShooterCharacter* Shooter = Cast<AShooterCharacter>(GetOwner()))
+	{
+		Shooter->OnDamaged.RemoveDynamic(this, &UBodycamComponent::HandleOwnerDamaged);
+		Shooter->OnDamageSource.RemoveDynamic(this, &UBodycamComponent::HandleOwnerDamageSource);
+	}
 	RemoveModifier();
 	Super::EndPlay(EndPlayReason);
 }
@@ -306,6 +354,8 @@ void UBodycamComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 	FadeLinear = FMath::Clamp(FadeLinear + (bEnabled ? Step : -Step), 0.0f, 1.0f);
 	BlendAlpha = FMath::SmoothStep(0.0f, 1.0f, FadeLinear);
 
+	TickDamageStatic(RealDelta);
+
 	if (bEnabled || BlendAlpha > 0.0f)
 	{
 		EnsureModifier(PC);
@@ -365,6 +415,136 @@ void UBodycamComponent::TickRigInputs(float DeltaTime)
 		// Restart the cadence half a stride in, so the first step after landing / sliding comes quickly.
 		StrideAccumulator = 0.5f * StrideLength;
 	}
+}
+
+// ── Damage static ───────────────────────────────────────────────────────────
+
+void UBodycamComponent::HandleOwnerDamaged(float LifePercent)
+{
+	const float Drop = LastHealthPercent - LifePercent;
+	LastHealthPercent = LifePercent;
+	// Heals and the BeginPlay / possession refresh broadcasts (1.0) don't count as hits.
+	if (Drop > UE_KINDA_SMALL_NUMBER)
+	{
+		AddDamageHit(Drop);
+		LastHealthHitFrame = GFrameCounter;
+	}
+}
+
+void UBodycamComponent::HandleOwnerDamageSource(FVector SourceLocation)
+{
+	// TakeDamage applies the health change before reporting the source, so a hit that took health
+	// has already been counted this frame. Otherwise armour absorbed it: a small crackle anyway.
+	if (LastHealthHitFrame != GFrameCounter)
+	{
+		DamageImpulse = FMath::Min(DamageImpulse + ArmorHitImpulse, 1.0f);
+		DamageReleaseTime = FMath::Max(DamageReleaseTime, LightHitReleaseTime);
+	}
+}
+
+void UBodycamComponent::AddDamageHit(float HealthDrop)
+{
+	if (HealthDrop <= 0.0f)
+	{
+		return;
+	}
+
+	// 0 .. LightHitHealthDrop ramps up to LightHitImpulse; Light .. Heavy ramps on to 1.
+	const float Light = FMath::Max(LightHitHealthDrop, UE_KINDA_SMALL_NUMBER);
+	const float Heavy = FMath::Max(HeavyHitHealthDrop, Light + UE_KINDA_SMALL_NUMBER);
+	const float Severity = BodycamLocal::Saturate((HealthDrop - Light) / (Heavy - Light));
+	const float Impulse = HealthDrop < Light
+		? LightHitImpulse * HealthDrop / Light
+		: FMath::Lerp(LightHitImpulse, 1.0f, Severity);
+
+	// Hits stack up to 1. A burst keeps the longest release of the hits feeding it.
+	const bool bBurstActive = DamageImpulse > 0.05f;
+	DamageImpulse = FMath::Min(DamageImpulse + Impulse, 1.0f);
+	const float Release = FMath::Lerp(LightHitReleaseTime, HeavyHitReleaseTime, Severity);
+	DamageReleaseTime = bBurstActive ? FMath::Max(DamageReleaseTime, Release) : Release;
+
+	// Heavy hits also jolt the rig through the landing / footstep springs (scaled by Motion,
+	// ADS and the fade in ApplyToView). Only while the look is visible, so nothing is stored up.
+	if (Impulse >= HitJoltMinImpulse && BlendAlpha > 0.0f)
+	{
+		const float Jolt = FMath::GetRangePct(HitJoltMinImpulse, 1.0f, Impulse) * 0.5f + 0.5f;
+		LandVelocity.X += BodycamLocal::KickVelocity(HitJoltPitch * Jolt, LandingSpringOmega);
+		StepVelocity.Y += BodycamLocal::KickVelocity(HitJoltRoll * Jolt, FootstepSpringOmega) * (FMath::RandBool() ? 1.0 : -1.0);
+	}
+}
+
+void UBodycamComponent::TickDamageStatic(float RealDelta)
+{
+#if !UE_BUILD_SHIPPING
+	// Debug test hit (carnage.Debug.BodycamDamageTest <healthDrop>): consume, then fire after the delay.
+	const float TestHit = CVarBodycamDamageTest.GetValueOnGameThread();
+	if (TestHit > 0.0f)
+	{
+		PendingTestHit = TestHit;
+		PendingTestDelay = FMath::Max(CVarBodycamDamageTestDelay.GetValueOnGameThread(), 0.0f);
+		CVarBodycamDamageTest.AsVariable()->Set(0.0f, ECVF_SetByConsole);
+	}
+	if (PendingTestHit > 0.0f)
+	{
+		PendingTestDelay -= RealDelta;
+		if (PendingTestDelay <= 0.0f)
+		{
+			UE_LOG(LogTemp, Log, TEXT("Bodycam damage test hit: health drop %.3f"), PendingTestHit);
+			AddDamageHit(PendingTestHit);
+			PendingTestHit = 0.0f;
+		}
+	}
+#endif
+
+	// Fast attack towards the stacked impulse, exponential release of the impulse itself
+	// (DamageReleaseTime = time to fall to 10%, i.e. tau = T / ln 10). Real time, so kill
+	// hit-stop doesn't freeze the burst.
+	if (DamageImpulse > 0.0f)
+	{
+		const float Tau = FMath::Max(DamageReleaseTime, 0.02f) / 2.302585f; // ln 10
+		DamageImpulse *= FMath::Exp(-RealDelta / Tau);
+		if (DamageImpulse < 0.002f)
+		{
+			DamageImpulse = 0.0f;
+		}
+	}
+	if (DamageImpulse > DamageStatic && DamageStaticAttackTime > UE_KINDA_SMALL_NUMBER)
+	{
+		DamageStatic += (DamageImpulse - DamageStatic) * (1.0f - FMath::Exp(-RealDelta / DamageStaticAttackTime));
+	}
+	else
+	{
+		DamageStatic = DamageImpulse;
+	}
+#if !UE_BUILD_SHIPPING
+	const float Hold = CVarBodycamDamageHold.GetValueOnGameThread();
+	if (Hold >= 0.0f)
+	{
+		DamageStatic = BodycamLocal::Saturate(Hold);
+	}
+#endif
+
+	// Low-health layer: LowHealthStaticMin just under the threshold, 1 at zero health, eased so
+	// crossing the threshold or healing doesn't pop.
+	float Health = LastHealthPercent;
+#if !UE_BUILD_SHIPPING
+	const float HealthOverride = CVarBodycamHealthOverride.GetValueOnGameThread();
+	if (HealthOverride >= 0.0f)
+	{
+		Health = HealthOverride;
+	}
+#endif
+	float LowTarget = 0.0f;
+	if (LowHealthStaticThreshold > 0.0f && Health < LowHealthStaticThreshold)
+	{
+		LowTarget = FMath::Lerp(LowHealthStaticMin, 1.0f, BodycamLocal::Saturate(1.0f - Health / LowHealthStaticThreshold));
+	}
+	LowHealthStatic = FMath::FInterpTo(LowHealthStatic, LowTarget, RealDelta, 4.0f);
+}
+
+float UBodycamComponent::GetEffectiveDamageStatic() const
+{
+	return BodycamLocal::Saturate(DamageStaticScale) * BodycamLocal::Saturate(CVarBodycamDamageStatic.GetValueOnGameThread());
 }
 
 // ── View ────────────────────────────────────────────────────────────────────
@@ -523,6 +703,12 @@ void UBodycamComponent::ApplyPostProcess(float& OutBlendWeight, FPostProcessSett
 		LensMID->SetScalarParameterValue(BodycamLocal::ParamChromaticAberration, GetEffectiveChromaticAberration());
 		LensMID->SetScalarParameterValue(BodycamLocal::ParamBorder, BodycamLocal::Saturate(BorderOpacity));
 		LensMID->SetScalarParameterValue(BodycamLocal::ParamRollingShutter, Shear);
+
+		// Bodycam-only: scaled by the fade alpha here and again by the PP blend weight, so the
+		// static is gone well before the normal view is back.
+		const float StaticScale = BlendAlpha * GetEffectiveDamageStatic();
+		LensMID->SetScalarParameterValue(BodycamLocal::ParamDamageStatic, DamageStatic * StaticScale);
+		LensMID->SetScalarParameterValue(BodycamLocal::ParamLowHealthStatic, LowHealthStatic * StaticScale);
 
 		// Weight 1 here; the whole PP blend is weighted by BlendAlpha, which lerps the material's
 		// parameters from the (neutral) base material defaults.
