@@ -34,6 +34,13 @@ private:
 
 	void BuildSequence();
 	void BuildMoveTest();
+	void BuildCombatTest();
+
+	/** Combat test helpers: aim the player's control rotation at a world point and log state. */
+	void AimAt(const FVector& WorldPoint) const;
+	bool AimAtNearestLivingNPC() const;
+	bool AimAtTrainerComponent(const FString& NamePrefix) const;
+	void LogCombatState(const TCHAR* Label) const;
 	void LogMovement();
 	void Shot(const TCHAR* Name);
 
