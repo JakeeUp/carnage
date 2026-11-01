@@ -158,10 +158,13 @@ sign("Sign_Mantle", "MANTLE: hold forward into a ledge", (4550, 0, 330), size=40
 
 # D  Wall-run gauntlet (alternating walls over a drop)
 F = "Showcase/D_WallRun"
-block("WallRun_Left", F, 5800, 6700, -560, -460, 0, 1000, MAT_ACCENT)
-block("WallRun_Right", F, 6400, 7300, 460, 560, 0, 1000, MAT_ACCENT)
+# Wall-run attach reach is capsule radius + WallRunTraceDistance (~110 cm) to the side, so the
+# walls are 360 cm apart: a slight lean attaches, and a wall kick (600 out / 600 up) reaches the
+# opposite wall for Titanfall-style chaining. Full length = ~1.5 s at wall-run speed.
+block("WallRun_Left", F, 5800, 7300, -280, -180, 0, 1000, MAT_ACCENT)
+block("WallRun_Right", F, 5800, 7300, 180, 280, 0, 1000, MAT_ACCENT)
 block("WallRun_Landing", F, 7300, 8100, -600, 600, 0, 470, MAT_STEP)
-sign("Sign_WallRun", "WALL RUN: jump at a wall while moving, SPACE to kick off", (5750, 0, 700), size=40)
+sign("Sign_WallRun", "WALL RUN: jump toward a wall while moving, SPACE to kick to the other wall", (5750, 0, 700), size=40)
 
 # E  Dash gap
 F = "Showcase/E_Dash"
