@@ -731,7 +731,7 @@ void UShooterHUDWidget::PaintVignette(const FPainter& P) const
 
 void UShooterHUDWidget::PaintCrosshair(const FPainter& P) const
 {
-	const FVector2f C = P.Size * 0.5f;
+	const FVector2f C = GetReticleAnchor(P.Size);
 	const float TickAlpha = 1.0f - ADSAlpha;
 	const float DotAlpha = FMath::Lerp(1.0f, ADSDotAlpha, ADSAlpha);
 
@@ -768,7 +768,7 @@ void UShooterHUDWidget::PaintCrosshair(const FPainter& P) const
 
 void UShooterHUDWidget::PaintHitmarker(const FPainter& P) const
 {
-	const FVector2f C = P.Size * 0.5f;
+	const FVector2f C = GetReticleAnchor(P.Size);
 
 	const float Duration = HitKind == 2 ? KillHitmarkerDuration : HitmarkerDuration;
 	const float Age = Now - HitTime;
@@ -1223,7 +1223,7 @@ void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
 		const float DotAlpha = FMath::Lerp(1.0f, BodycamDotADSAlpha, ADSAlpha);
 		if (DotAlpha > KINDA_SMALL_NUMBER)
 		{
-			const FVector2f C = (bBodycamDotFollowsAim && bHasBodycamAimPoint) ? BodycamAimPoint : P.Size * 0.5f;
+			const FVector2f C = GetReticleAnchor(P.Size);
 			const FVector2f D(BodycamDotSize, BodycamDotSize);
 			FLinearColor Shadow = ColorShadow;
 			Shadow.A *= DotAlpha;
@@ -1233,6 +1233,18 @@ void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
 			P.RectCentered(C, D, Dot, 0.0f, 0.0f, Layer + 1);
 		}
 	}
+}
+
+FVector2f UShooterHUDWidget::GetReticleAnchor(const FVector2f& ViewSize) const
+{
+	const FVector2f Centre = ViewSize * 0.5f;
+	if (!bBodycamDotFollowsAim || !bHasBodycamAimPoint)
+	{
+		return Centre;
+	}
+	// Clean HUD: the camera is the aim, keep the reticle centred. Bodycam: the view lags the gun, so
+	// follow the projected aim point. Blending by the bodycam alpha makes the B toggle seamless.
+	return FMath::Lerp(Centre, BodycamAimPoint, FMath::Clamp(BodycamAlpha, 0.0f, 1.0f));
 }
 
 void UShooterHUDWidget::UpdateBodycamAimPoint()
@@ -1278,7 +1290,7 @@ void UShooterHUDWidget::PaintBodycamHitmarker(const FPainter& P) const
 	const float Len = HitmarkerLength * S;
 	const float Th = BodycamHitmarkerThickness;
 	const float Dist = HitmarkerInnerRadius * S + Len * 0.5f;
-	const FVector2f C = P.Size * 0.5f;
+	const FVector2f C = GetReticleAnchor(P.Size);
 
 	static const FVector2f Diag[4] = { FVector2f(1, -1), FVector2f(1, 1), FVector2f(-1, 1), FVector2f(-1, -1) };
 	for (int32 i = 0; i < 4; ++i)

@@ -326,8 +326,10 @@ public:
 	bool bBodycamCenterDot = true;
 
 	/**
-	 * Place the dot where the gun actually points rather than at screen centre. The bodycam view
-	 * trails the aim through a spring, so during fast turns the two differ by a few degrees.
+	 * In bodycam, anchor the dot, hitmarkers and damage numbers where the gun actually points rather
+	 * than at screen centre. The bodycam view trails the aim through a spring, so during movement and
+	 * fast turns the two differ by a few degrees. Blends with the bodycam alpha, so the clean HUD
+	 * stays centred.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(EditCondition="bBodycamCenterDot"))
 	bool bBodycamDotFollowsAim = true;
@@ -517,6 +519,9 @@ private:
 
 	/** Projects the control rotation (the gun's aim) through the current, possibly lagging, view. */
 	void UpdateBodycamAimPoint();
+
+	/** Where the reticle (crosshair, dot, hitmarker, damage numbers) is drawn for a view of this size. */
+	FVector2f GetReticleAnchor(const FVector2f& ViewSize) const;
 	float ADSVelocity = 0.0f;
 
 	// Hitmarker
