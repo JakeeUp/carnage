@@ -28,8 +28,8 @@ instance's parameters from the base material's values, so the effect fades in sm
   RollingShutter       signed horizontal skew in viewport-UV units per unit of (uv.y - 0.5)
   K1, K2                     radial coefficients (0.32, 0.10: a clearly visible fisheye)
   CAStrength                 radial scale difference between R and B at r^2 = 1 (0.016)
-  DamageStatic         0..1  damage glitch: red static, row tearing, rolling band, channel
-                             split, signal-loss dropout above ~0.55 (0 = off)
+  DamageStatic         0..1  damage glitch: red static and sparks, row tearing, rolling band,
+                             channel split, signal-loss dropout above ~0.6 (0 = off)
   LowHealthStatic      0..1  faint pulsing red static + scanlines, edge weighted (0 = off)
   StaticTint                 static colour (1, 0.06, 0.04)
   StaticTear                 max sideways row shift in viewport UV at DamageStatic 1 (0.07)
@@ -135,7 +135,7 @@ if (D > 0.001)
     // Keep the aim area readable at medium intensity; full tearing only near DamageStatic 1.
     float2 cc = (UV - 0.5) * float2(Aspect, 1.0);
     float Keep = lerp(0.3, 1.0, smoothstep(0.06, 0.4, length(cc)));
-    Keep = lerp(Keep, 1.0, smoothstep(0.75, 1.0, D));
+    Keep = lerp(Keep, 1.0, smoothstep(0.75, 1.0, D) * 0.6);
     float Bands = 14.0 + floor(Hash.H(float2(tf, 7.0)) * 34.0);
     float Band = floor(uv.y * Bands);
     float Torn = step(Hash.H(float2(Band, tf)), D * 0.6);
@@ -237,7 +237,8 @@ if (L > 0.001)
     float Scan = 0.5 + 0.5 * sin(UV.y * ViewSize.y * 1.5708);
     float EdgeW = lerp(0.35, 1.0, Edge);
     c *= 1.0 - 0.16 * L * Scan * EdgeW;
-    c = lerp(c, Static, L * (0.04 + 0.08 * Pulse) * EdgeW);
+    c = lerp(c, c * float3(1.0, 0.55, 0.55), L * 0.4 * Pulse * Edge);
+    c = lerp(c, Static, L * (0.05 + 0.1 * Pulse) * EdgeW);
 }
 
 // Damage: red grade, static over the scene, line jitter, signal-loss dropout.
@@ -245,14 +246,19 @@ if (D > 0.001)
 {
     // The aim area stays readable-ish until the top of the range.
     float Keep = lerp(0.35, 1.0, smoothstep(0.06, 0.4, r));
-    Keep = lerp(Keep, 1.0, smoothstep(0.75, 1.0, D));
+    Keep = lerp(Keep, 1.0, smoothstep(0.75, 1.0, D) * 0.6);
+    // Shaped so a light hit (~0.3) is a sparse crackle and only a heavy one (~1) floods the frame.
+    float D2 = D * D;
     float Luma = dot(c, float3(0.299, 0.587, 0.114));
-    c = lerp(c, Luma * TintC * 1.5 + c * 0.25, D * 0.5);
-    c = lerp(c, Static, saturate(D * 0.8) * Keep * 0.8);
+    c = lerp(c, Luma * TintC * 1.5 + c * 0.25, D2 * 0.6);
+    c = lerp(c, Static, D * sqrt(D) * Keep * 0.62);
+    // Crackle: the brightest static cells punch through as red sparks, more of them as D rises.
+    float Spark = step(1.0 - (0.03 * D + 0.1 * D2) * lerp(0.3, 1.0, Edge), n);
+    c = lerp(c, TintC * (0.8 + 0.4 * LineN), Spark * 0.85);
     c *= 1.0 + (LineN - 0.5) * 0.5 * D;
-    // Above ~0.55 some frames (24 Hz steps) lose the signal and collapse to static.
+    // Above ~0.6 some frames (24 Hz steps) lose the signal and collapse to static.
     float td = fmod(floor(T * 24.0), 983.0);
-    float Chance = saturate((D - 0.55) / 0.45) * 0.55;
+    float Chance = saturate((D - 0.6) / 0.4) * 0.3;
     float Drop = step(Hash.H(float2(td, 91.0)), Chance);
     c = lerp(c, Static * 0.7, Drop * 0.85);
 }
