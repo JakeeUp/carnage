@@ -200,6 +200,17 @@ struct FStateTreeSenseEnemiesInstanceData
 
 	UPROPERTY(EditAnywhere)
 	float LastStimulusStrength = 0.0f;
+
+	/**
+	 * How often (seconds) actors that are already seen are re-checked for the line-of-sight cone.
+	 * Perception events only fire when visibility changes, so without this an enemy that first
+	 * notices the player off to its side never engages while the player stays visible.
+	 */
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (ClampMin = 0.05, ClampMax = 2))
+	float RecheckInterval = 0.2f;
+
+	/** Time accumulated toward the next re-check. */
+	float RecheckAccumulator = 0.0f;
 };
 
 USTRUCT(meta=(DisplayName="Sense Enemies", Category="Shooter"))
@@ -210,7 +221,18 @@ struct FStateTreeSenseEnemiesTask : public FStateTreeTaskCommonBase
 	using FInstanceDataType = FStateTreeSenseEnemiesInstanceData;
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
 
+	FStateTreeSenseEnemiesTask() { bShouldCallTick = true; }
+
+	/**
+	 * Accepts SensedActor as the target when it has the sense tag, is inside the direct line-of-sight
+	 * cone and unobstructed. Otherwise records an investigate location so the NPC turns toward it.
+	 * @return true if the actor became the target.
+	 */
+	static bool TryAcquireTarget(FInstanceDataType& InstanceData, AActor* SensedActor, const FVector& StimulusLocation, float StimulusStrength);
+
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+
+	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
 
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 
