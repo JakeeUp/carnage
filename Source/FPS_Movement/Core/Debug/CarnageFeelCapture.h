@@ -33,7 +33,14 @@ private:
 	};
 
 	void BuildSequence();
+	void BuildMoveTest();
+	void LogMovement();
 	void Shot(const TCHAR* Name);
+
+	/** Move test: hold forward input every frame while set. */
+	bool bHoldForward = false;
+	float NextLogTime = 0.0f;
+	FString Phase;
 
 	TArray<FStep> Steps;
 	int32 NextStep = 0;

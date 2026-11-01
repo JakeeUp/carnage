@@ -6,6 +6,8 @@
 #include "HAL/IConsoleManager.h"
 #include "UnrealClient.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "DoomMovementComponent.h"
+#include "FPS_Movement.h"
 
 #if !UE_BUILD_SHIPPING
 static TAutoConsoleVariable<int32> CVarFeelCapture(
@@ -15,6 +17,10 @@ static TAutoConsoleVariable<int32> CVarFeelCapture(
 static TAutoConsoleVariable<FString> CVarFeelCaptureTour(
 	TEXT("carnage.Debug.FeelCaptureTour"), TEXT(""),
 	TEXT("Optional viewpoints visited after the feel sequence: \"x y z yaw pitch|x y z yaw pitch|...\". Each gets a screenshot."));
+
+static TAutoConsoleVariable<int32> CVarMoveTest(
+	TEXT("carnage.Debug.MoveTest"), 0,
+	TEXT("1 = with FeelCapture, run the scripted movement test (slide hill + jump arcs) and log telemetry instead of the weapon sequence."));
 
 static TAutoConsoleVariable<int32> CVarFeelCaptureQuit(
 	TEXT("carnage.Debug.FeelCaptureQuit"), 1,
@@ -135,7 +141,28 @@ void UCarnageFeelCapture::Tick(float DeltaTime)
 			return;
 		}
 		bStarted = true;
-		BuildSequence();
+		if (CVarMoveTest.GetValueOnGameThread() != 0)
+		{
+			BuildMoveTest();
+		}
+		else
+		{
+			BuildSequence();
+		}
+	}
+
+	if (bHoldForward)
+	{
+		if (AShooterCharacter* C = GetPlayerShooter(GetWorld()))
+		{
+			C->AddMovementInput(C->GetActorForwardVector(), 1.0f);
+		}
+	}
+
+	if (!Phase.IsEmpty() && Elapsed >= NextLogTime)
+	{
+		NextLogTime = Elapsed + 0.05f;
+		LogMovement();
 	}
 
 	// Real time so kill hit-stop can't stall the script; clamped so the post-load hitch frame
@@ -146,4 +173,62 @@ void UCarnageFeelCapture::Tick(float DeltaTime)
 		Steps[NextStep++].Action();
 	}
 #endif
+}
+
+void UCarnageFeelCapture::LogMovement()
+{
+	const AShooterCharacter* C = GetPlayerShooter(GetWorld());
+	const UDoomMovementComponent* M = C ? Cast<UDoomMovementComponent>(C->GetCharacterMovement()) : nullptr;
+	if (!M)
+	{
+		return;
+	}
+	const FVector L = C->GetActorLocation();
+	const TCHAR* State = M->IsSliding() ? TEXT("SLIDE") : M->IsFalling() ? TEXT("AIR") : TEXT("GROUND");
+	UE_LOG(LogFPS_Movement, Display, TEXT("[MoveTest] %s t=%.2f x=%.0f z=%.1f spd2D=%.0f vz=%.0f state=%s"),
+		*Phase, Elapsed, L.X, L.Z, M->Velocity.Size2D(), M->Velocity.Z, State);
+}
+
+void UCarnageFeelCapture::BuildMoveTest()
+{
+	UWorld* World = GetWorld();
+	auto Teleport = [World](const FVector& Loc)
+	{
+		if (AShooterCharacter* C = GetPlayerShooter(World))
+		{
+			C->GetCharacterMovement()->StopMovementImmediately();
+			C->TeleportTo(Loc, FRotator::ZeroRotator, false, true);
+			if (AController* Ctrl = C->GetController())
+			{
+				Ctrl->SetControlRotation(FRotator::ZeroRotator);
+			}
+		}
+	};
+	auto Move = [World]() { AShooterCharacter* C = GetPlayerShooter(World); return C ? Cast<UDoomMovementComponent>(C->GetCharacterMovement()) : nullptr; };
+
+	// Showcase slide hill: flat crest X 2300..2700 at Z 250, 14 deg down-ramp to X 3700.
+	Steps = {
+		{ 1.0f,  [this, Teleport]() { Teleport(FVector(2320.0f, 0.0f, 400.0f)); } },
+		{ 1.8f,  [this, Move]() { Phase = TEXT("slide"); bHoldForward = true; if (auto* M = Move()) { M->StartSprint(); } } },
+		{ 2.15f, [Move]() { if (auto* M = Move()) { M->StartSlide(); } } },
+		{ 5.0f,  [this, Move]() { bHoldForward = false; if (auto* M = Move()) { M->StopSlide(); M->StopSprint(); } Phase.Empty(); } },
+
+		// Jump arcs on flat ground: held jump, then a tap.
+		{ 5.5f,  [this, Teleport]() { Teleport(FVector(-300.0f, 0.0f, 120.0f)); } },
+		{ 6.5f,  [this, World]() { Phase = TEXT("jump_hold"); if (AShooterCharacter* C = GetPlayerShooter(World)) { C->DoJumpStart(); } } },
+		{ 7.2f,  [World]() { if (AShooterCharacter* C = GetPlayerShooter(World)) { C->DoJumpEnd(); } } },
+		{ 8.0f,  [this]() { Phase.Empty(); } },
+		{ 8.5f,  [this, World]() { Phase = TEXT("jump_tap"); if (AShooterCharacter* C = GetPlayerShooter(World)) { C->DoJumpStart(); } } },
+		{ 8.56f, [World]() { if (AShooterCharacter* C = GetPlayerShooter(World)) { C->DoJumpEnd(); } } },
+		{ 9.5f,  [this]() { Phase.Empty(); } },
+		{ 10.0f, [World]()
+			{
+#if !UE_BUILD_SHIPPING
+				if (CVarFeelCaptureQuit.GetValueOnGameThread() != 0)
+				{
+					UKismetSystemLibrary::QuitGame(World, nullptr, EQuitPreference::Quit, false);
+				}
+#endif
+			} },
+	};
 }
