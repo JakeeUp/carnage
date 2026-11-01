@@ -402,6 +402,11 @@ void UCarnageFeelCapture::BuildCombatTest()
 	// Aim trainer: shoot GRIDSHOT, wait out the countdown, then clear targets.
 	T += 0.5f;
 	Steps.Add({ T, [Teleport]() { Teleport(FVector(11000.0f, 4500.0f, 100.0f), 0.0f); } });
+	// Toggle INF AMMO from the console (the fifth button), then start GRIDSHOT.
+	Steps.Add({ T + 0.3f, [this]() { AimAtTrainerComponent(TEXT("Button4")); } });
+	Steps.Add({ T + 0.35f, Fire });
+	Steps.Add({ T + 0.4f, Cease });
+	Steps.Add({ T + 0.55f, [this]() { Shot(TEXT("C2b_InfAmmoToggle")); } });
 	Steps.Add({ T + 0.6f, [this]() { AimAtTrainerComponent(TEXT("Button0")); } });
 	Steps.Add({ T + 0.7f, Fire });
 	Steps.Add({ T + 0.8f, Cease });
