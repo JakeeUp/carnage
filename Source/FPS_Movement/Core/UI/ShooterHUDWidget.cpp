@@ -11,6 +11,7 @@
 
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Fonts/FontMeasure.h"
 #include "Rendering/DrawElements.h"
@@ -379,6 +380,8 @@ void UShooterHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 	// Slate delta is real (undilated) time; clamp against hitches.
 	const float Dt = FMath::Clamp(InDeltaTime, 0.0f, 0.1f);
 	Now += Dt;
+
+	UpdateBodycamAimPoint();
 
 	// Auto re-bind if the owning pawn changed underneath us (respawn without an explicit bind).
 	AShooterCharacter* OwnerPawn = Cast<AShooterCharacter>(GetOwningPlayerPawn());
@@ -1214,13 +1217,44 @@ void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
 
 	P.Text(Percent, Font, FVector2f(BattPos.X + BattSize.X + NubW + 6.0f, Y0), FVector2f(0.0f, 0.0f), BattCol, 1.0f, nullptr, Layer);
 
-	// ── Optional center dot (replaces the hidden crosshair) ─────────────
+	// ── Dot crosshair (replaces the hidden crosshair ticks) ─────────────
 	if (bBodycamCenterDot)
 	{
-		const FVector2f C = P.Size * 0.5f;
-		const FVector2f D(CrosshairDotSize, CrosshairDotSize);
-		P.RectCentered(C, D + FVector2f(2.0f, 2.0f), ColorShadow, 0.0f, 0.0f, Layer);
-		P.RectCentered(C, D, TextCol, 0.0f, 0.0f, Layer + 1);
+		const float DotAlpha = FMath::Lerp(1.0f, BodycamDotADSAlpha, ADSAlpha);
+		if (DotAlpha > KINDA_SMALL_NUMBER)
+		{
+			const FVector2f C = (bBodycamDotFollowsAim && bHasBodycamAimPoint) ? BodycamAimPoint : P.Size * 0.5f;
+			const FVector2f D(BodycamDotSize, BodycamDotSize);
+			FLinearColor Shadow = ColorShadow;
+			Shadow.A *= DotAlpha;
+			FLinearColor Dot = TextCol;
+			Dot.A *= DotAlpha;
+			P.RectCentered(C, D + FVector2f(2.0f, 2.0f), Shadow, 0.0f, 0.0f, Layer);
+			P.RectCentered(C, D, Dot, 0.0f, 0.0f, Layer + 1);
+		}
+	}
+}
+
+void UShooterHUDWidget::UpdateBodycamAimPoint()
+{
+	bHasBodycamAimPoint = false;
+
+	APlayerController* PC = GetOwningPlayer();
+	if (!PC || !PC->PlayerCameraManager)
+	{
+		return;
+	}
+
+	// The view comes from the camera manager (lagging in bodycam); the aim is the control rotation.
+	constexpr float AimProjectionDistance = 5000.0f;
+	const FVector ViewLocation = PC->PlayerCameraManager->GetCameraLocation();
+	const FVector AimPoint = ViewLocation + PC->GetControlRotation().Vector() * AimProjectionDistance;
+
+	FVector2D WidgetPosition;
+	if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(PC, AimPoint, WidgetPosition, false))
+	{
+		BodycamAimPoint = FVector2f(WidgetPosition);
+		bHasBodycamAimPoint = true;
 	}
 }
 

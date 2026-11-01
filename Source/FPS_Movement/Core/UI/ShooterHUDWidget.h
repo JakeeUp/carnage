@@ -321,9 +321,24 @@ public:
 	// fields in the corners instead of panels. Both layouts are always evaluated and crossfaded
 	// by the bodycam blend alpha, so toggling morphs between them.
 
-	/** Keep a small center dot in bodycam mode (the crosshair ticks are always hidden). */
+	/** Draw a dot crosshair in bodycam mode (the crosshair ticks are always hidden). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
-	bool bBodycamCenterDot = false;
+	bool bBodycamCenterDot = true;
+
+	/**
+	 * Place the dot where the gun actually points rather than at screen centre. The bodycam view
+	 * trails the aim through a spring, so during fast turns the two differ by a few degrees.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(EditCondition="bBodycamCenterDot"))
+	bool bBodycamDotFollowsAim = true;
+
+	/** Bodycam dot diameter (DPI-scaled units). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=1, ClampMax=16, EditCondition="bBodycamCenterDot"))
+	float BodycamDotSize = 4.0f;
+
+	/** Bodycam dot opacity at full ADS (the sights take over). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=1, EditCondition="bBodycamCenterDot"))
+	float BodycamDotADSAlpha = 0.0f;
 
 	/** Fictional device / unit line drawn along the bottom edge. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
@@ -495,6 +510,13 @@ private:
 	float GapVelocity = 0.0f;
 	bool bAimTarget = false;
 	float ADSAlpha = 0.0f;
+
+	/** Where the gun's aim ray lands on screen, in widget space (valid when bHasBodycamAimPoint). */
+	FVector2f BodycamAimPoint = FVector2f::ZeroVector;
+	bool bHasBodycamAimPoint = false;
+
+	/** Projects the control rotation (the gun's aim) through the current, possibly lagging, view. */
+	void UpdateBodycamAimPoint();
 	float ADSVelocity = 0.0f;
 
 	// Hitmarker
