@@ -13,12 +13,16 @@ UDoomMovementComponent::UDoomMovementComponent()
 {
 	MaxWalkSpeed = 800.0f;
 	MaxWalkSpeedCrouched = 400.0f;
-	JumpZVelocity = 620.0f;
-	AirControl = 0.85f;
-	BrakingDecelerationFalling = 200.0f;
+	// Snappy, Titanfall-style arc: strong gravity with a matching jump speed gives a ~130 cm
+	// apex reached in ~0.37 s, then FallGravityMultiplier brings you down faster than you rose.
+	JumpZVelocity = 720.0f;
+	GravityScale = 2.0f;
+	// Strong air control and almost no air braking: momentum carries through jumps and you can
+	// strafe in the air instead of stopping dead when you release a key.
+	AirControl = 0.65f;
+	BrakingDecelerationFalling = 150.0f;
 	BrakingDecelerationWalking = 1400.0f;
 	GroundFriction = 6.0f;
-	GravityScale = 1.4f;
 	MaxAcceleration = 2800.0f;
 	BrakingFrictionFactor = 1.0f;
 	bUseSeparateBrakingFriction = false;
@@ -48,6 +52,12 @@ void UDoomMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	SCOPE_CYCLE_COUNTER(STAT_DoomMovementTick);
 
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	// The variable-height window ends at the apex, on landing, or when another system takes over.
+	if (bPlayerJumpRising && (!IsFalling() || Velocity.Z <= 0.0f || bIsWallRunning))
+	{
+		bPlayerJumpRising = false;
+	}
 
 	UpdateDash(DeltaTime);
 	UpdateMantle(DeltaTime);
@@ -174,6 +184,7 @@ void UDoomMovementComponent::StartSlide()
 
 	bIsSliding = true;
 	SlideTimer = 0.0f;
+	SlideAirTime = 0.0f;
 
 	SavedGroundFriction = GroundFriction;
 	GroundFriction = SlideGroundFrictionOverride;
@@ -219,50 +230,75 @@ void UDoomMovementComponent::UpdateSlide(float DeltaTime)
 {
 	if (!bIsSliding) return;
 
-	SlideTimer += DeltaTime;
+	// ── Ground contact ──────────────────────────────────────────────────
+	// Crests and seams can unground the capsule for a frame or two; don't cancel the slide for it.
+	if (!IsMovingOnGround())
+	{
+		SlideAirTime += DeltaTime;
+		bSlideOnDownhill = false;
+		if (SlideAirTime > SlideAirGraceTime)
+		{
+			StopSlide();
+		}
+		return;
+	}
+	SlideAirTime = 0.0f;
 
-	// ── Slope acceleration ─────────────────────────────────────────────
+	// ── Slope ───────────────────────────────────────────────────────────
+	// The floor normal leans toward the downhill side, so its horizontal part is the downhill
+	// direction and its horizontal length is sin(slope angle).
+	float SlopeSine = 0.0f;
+	FVector Downhill2D = FVector::ZeroVector;
 	if (CurrentFloor.IsWalkableFloor())
 	{
-		const FVector FloorNormal = CurrentFloor.HitResult.ImpactNormal;
-		const FVector Down(0.0f, 0.0f, -1.0f);
+		const FVector N = CurrentFloor.HitResult.ImpactNormal;
+		const FVector Horizontal(N.X, N.Y, 0.0f);
+		SlopeSine = static_cast<float>(Horizontal.Size());
+		Downhill2D = Horizontal.GetSafeNormal();
+	}
 
-		FVector DownhillDir = Down - FloorNormal * FVector::DotProduct(Down, FloorNormal);
+	const bool bOnSlope = SlopeSine > SlideMinSlopeSine;
+	const FVector Dir2D = Velocity.GetSafeNormal2D();
+	bSlideOnDownhill = bOnSlope && FVector::DotProduct(Dir2D, Downhill2D) > 0.25f;
 
-		if (!DownhillDir.IsNearlyZero())
+	if (bOnSlope)
+	{
+		// Real gravity along the slope (g * sin), scaled for feel. Applied along the downhill
+		// direction, so it speeds you up going down and bleeds speed going up.
+		const float SlopeAccel = -GetGravityZ() * SlopeSine * SlideGravityScale;
+		Velocity += Downhill2D * SlopeAccel * DeltaTime;
+
+		const float Speed2D = Velocity.Size2D();
+		if (Speed2D > SlideMaxSpeed)
 		{
-			DownhillDir.Normalize();
-
-			const float Steepness = FMath::Clamp(1.0f - FloorNormal.Z, 0.0f, 1.0f);
-
-			const FVector SlopeForce = DownhillDir * SlideSlopeAcceleration * Steepness;
-			Velocity += SlopeForce * DeltaTime;
-
-			const float Speed2D = Velocity.Size2D();
-			if (Speed2D > SlideMaxSpeed)
-			{
-				const FVector Capped = Velocity.GetSafeNormal2D() * SlideMaxSpeed;
-				Velocity.X = Capped.X;
-				Velocity.Y = Capped.Y;
-			}
+			const FVector Capped = Velocity.GetSafeNormal2D() * SlideMaxSpeed;
+			Velocity.X = Capped.X;
+			Velocity.Y = Capped.Y;
 		}
 	}
 
-	// ── Friction deceleration ───────────────────────────────────────────
+	// ── Friction ────────────────────────────────────────────────────────
+	// Full friction on flat ground; almost none while going downhill so slopes build speed.
 	{
+		const float Decel = SlideDeceleration * (bSlideOnDownhill ? SlideDownhillFrictionScale : 1.0f);
 		const float CurrentSpeed2D = Velocity.Size2D();
 		if (CurrentSpeed2D > 0.0f)
 		{
-			const float NewSpeed = FMath::Max(0.0f, CurrentSpeed2D - SlideDeceleration * DeltaTime);
-			const FVector Dir2D = Velocity.GetSafeNormal2D();
-			Velocity.X = Dir2D.X * NewSpeed;
-			Velocity.Y = Dir2D.Y * NewSpeed;
+			const float NewSpeed = FMath::Max(0.0f, CurrentSpeed2D - Decel * DeltaTime);
+			const FVector Dir = Velocity.GetSafeNormal2D();
+			Velocity.X = Dir.X * NewSpeed;
+			Velocity.Y = Dir.Y * NewSpeed;
 		}
 	}
 
-	// ── Exit conditions ────────────────────────────────────────────────
-	const float Speed2D = Velocity.Size2D();
-	if (Speed2D < SlideExitSpeed || SlideTimer > SlideMaxDuration || !IsMovingOnGround())
+	// ── Exit conditions ─────────────────────────────────────────────────
+	// The duration limit only counts flat or uphill sliding: a slide lasts as long as the hill.
+	if (!bSlideOnDownhill)
+	{
+		SlideTimer += DeltaTime;
+	}
+
+	if (Velocity.Size2D() < SlideExitSpeed || SlideTimer > SlideMaxDuration)
 	{
 		StopSlide();
 	}
@@ -414,6 +450,7 @@ bool UDoomMovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 		if (Super::DoJump(bReplayingMoves, DeltaTime))
 		{
 			Velocity.Z += SlideJumpBoost;
+			bPlayerJumpRising = true;
 			OnMovementAction.Broadcast(EDoomMovementAction::Jump);
 			return true;
 		}
@@ -449,9 +486,34 @@ bool UDoomMovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 	const bool bJumped = Super::DoJump(bReplayingMoves, DeltaTime);
 	if (bJumped)
 	{
+		bPlayerJumpRising = true;
 		OnMovementAction.Broadcast(EDoomMovementAction::Jump);
 	}
 	return bJumped;
+}
+
+float UDoomMovementComponent::GetGravityZ() const
+{
+	const float BaseGravity = Super::GetGravityZ();
+
+	// Only shape free-fall; wall runs, dashes and mantles run their own vertical logic.
+	if (!IsFalling() || bIsWallRunning || bIsDashing || bIsMantling)
+	{
+		return BaseGravity;
+	}
+
+	if (Velocity.Z <= 0.0f)
+	{
+		return BaseGravity * FallGravityMultiplier;
+	}
+
+	// Rising from a player jump with the button released: cut the arc short (variable height).
+	if (bPlayerJumpRising && !bHoldingJump)
+	{
+		return BaseGravity * JumpReleaseGravityMultiplier;
+	}
+
+	return BaseGravity;
 }
 
 bool UDoomMovementComponent::CanAttemptJump() const

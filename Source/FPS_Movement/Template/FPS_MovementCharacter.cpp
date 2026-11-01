@@ -35,8 +35,7 @@ AFPS_MovementCharacter::AFPS_MovementCharacter(const FObjectInitializer& ObjectI
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
 
-	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
-	GetCharacterMovement()->AirControl = 0.5f;
+	// Air control and air braking are owned by UDoomMovementComponent; don't override them here.
 }
 
 void AFPS_MovementCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

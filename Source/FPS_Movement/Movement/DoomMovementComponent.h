@@ -84,8 +84,24 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Slide", meta=(ClampMin=0, ClampMax=3, Units="s"))
 	float SlideCooldown = 0.6f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Slide", meta=(ClampMin=0))
-	float SlideSlopeAcceleration = 2600.0f;
+	/**
+	 * Downhill pull while sliding, as a multiple of real gravity along the slope (g * sin(angle)).
+	 * 1 = a frictionless block; >1 exaggerates it so even gentle ramps feel fast.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Slide", meta=(ClampMin=0, ClampMax=5))
+	float SlideGravityScale = 1.8f;
+
+	/** SlideDeceleration multiplier while sliding downhill (0 = no friction on slopes). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Slide", meta=(ClampMin=0, ClampMax=1))
+	float SlideDownhillFrictionScale = 0.1f;
+
+	/** Slopes shallower than this (sine of the angle, ~3 deg) count as flat ground. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Slide", meta=(ClampMin=0, ClampMax=0.5))
+	float SlideMinSlopeSine = 0.05f;
+
+	/** Time the slide survives without ground contact (crests, seams, small bumps). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Slide", meta=(ClampMin=0, ClampMax=1, Units="s"))
+	float SlideAirGraceTime = 0.2f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Slide", meta=(ClampMin=0))
 	float SlideSteeringAcceleration = 650.0f;
@@ -230,7 +246,20 @@ public:
 	float JumpBufferTime = 0.12f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Jump", meta=(ClampMin=0, ClampMax=1))
-	float AirJumpRedirectStrength = 0.75f;
+	float AirJumpRedirectStrength = 0.9f;
+
+	/** Gravity multiplier while falling: a quick rise and a faster drop instead of a floaty arc. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Jump", meta=(ClampMin=1, ClampMax=4))
+	float FallGravityMultiplier = 1.35f;
+
+	/**
+	 * Gravity multiplier while still rising from a player jump after jump is released: tapping
+	 * gives a short hop, holding gives the full arc. Launches (pads, wall kicks) are unaffected.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Jump", meta=(ClampMin=1, ClampMax=4))
+	float JumpReleaseGravityMultiplier = 1.7f;
+
+	virtual float GetGravityZ() const override;
 
 	void NotifyJumpInputPressed();
 
@@ -294,6 +323,8 @@ private:
 	bool bIsSliding = false;
 	bool bWantsToSlideHeld = false;
 	float SlideTimer = 0.0f;
+	float SlideAirTime = 0.0f;
+	bool bSlideOnDownhill = false;
 	float SavedGroundFriction = 0.0f;
 	float SavedCapsuleHalfHeight = 0.0f;
 	float SavedCapsuleRadius = 0.0f;
@@ -314,6 +345,9 @@ private:
 	void UpdateDash(float DeltaTime);
 
 	bool bHoldingJump = false;
+
+	/** True from a player-initiated jump until the apex; enables JumpReleaseGravityMultiplier. */
+	bool bPlayerJumpRising = false;
 	int32 ConsecutiveHops = 0;
 
 	float CoyoteAnchorTime = -1000.0f;
