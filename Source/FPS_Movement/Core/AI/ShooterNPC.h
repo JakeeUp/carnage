@@ -76,6 +76,72 @@ protected:
 	UFUNCTION()
 	void HandleJuggleStateChanged(bool bJuggled);
 
+	// ── Hit reactions (procedural, no animation assets) ─────────────────
+
+	/** Move Weapon-channel hits from the capsule to the physics asset bodies (needs a physics asset; otherwise the capsule stays hittable). */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction")
+	bool bPerBoneWeaponHits = true;
+
+	/** Bodies from this bone down blend into physics when the upper body is hit. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction")
+	FName FlinchRootBone = FName("spine_01");
+
+	/** Peak physics blend weight of a flinch. Decays linearly to 0 over FlinchDuration. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0, ClampMax=1))
+	float FlinchBlendWeight = 0.45f;
+
+	/** How long the flinch (or the fallback mesh shake) takes to settle. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0.05, ClampMax=2, Units="s"))
+	float FlinchDuration = 0.25f;
+
+	/** Velocity kick given to the hit body per point of damage. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0))
+	float FlinchSpeedPerDamage = 14.0f;
+
+	/** Upper limit of the flinch velocity kick. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0, Units="cm/s"))
+	float MaxFlinchSpeed = 700.0f;
+
+	/** Flinch kick multiplier on headshots. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=1))
+	float HeadshotFlinchMultiplier = 1.75f;
+
+	/** Flinch strength while airborne or juggled, so the reaction stays light on top of juggle launches. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0, ClampMax=1))
+	float AirborneFlinchScale = 0.4f;
+
+	/** Fallback when the mesh has no physics asset: peak mesh tilt away from the shot. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0, ClampMax=30, Units="Degrees"))
+	float FallbackShakeAngle = 5.0f;
+
+	/** Fallback when the mesh has no physics asset: peak mesh offset along the shot. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0, ClampMax=30, Units="cm"))
+	float FallbackShakeOffset = 3.0f;
+
+	/** Fallback shake oscillation rate. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=1, ClampMax=40, Units="Hz"))
+	float FallbackShakeFrequency = 14.0f;
+
+	/** How long a grounded hit slows the NPC down. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0, ClampMax=2, Units="s"))
+	float StaggerDuration = 0.3f;
+
+	/** MaxWalkSpeed multiplier during a stagger. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0, ClampMax=1))
+	float StaggerSpeedScale = 0.35f;
+
+	/** Velocity added to every ragdoll body along the killing shot. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0, Units="cm/s"))
+	float DeathBodySpeed = 150.0f;
+
+	/** Extra velocity kick on the body the killing shot hit. Scaled by the weapon's PhysicsImpulse relative to 800. */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=0, Units="cm/s"))
+	float DeathBoneSpeed = 650.0f;
+
+	/** Death kick multiplier on headshot kills (applied to the head). */
+	UPROPERTY(EditAnywhere, Category="Hit Reaction", meta=(ClampMin=1))
+	float HeadshotDeathMultiplier = 1.8f;
+
 public:
 
 	FPawnDeathDelegate OnPawnDeath;
@@ -119,6 +185,50 @@ protected:
 	void Die();
 
 	void DeferredDestruction();
+
+	/** Plain data about the most recent point hit (no object pointers), used by reactions and the death impulse. */
+	struct FLastHitData
+	{
+		bool bValid = false;
+		bool bHeadshot = false;
+		FName BoneName = NAME_None;
+		FVector Location = FVector::ZeroVector;
+		FVector Direction = FVector::ForwardVector;
+		float Damage = 0.0f;
+		float ImpulseScale = 1.0f;
+	};
+
+	void PlayHitReaction(const FLastHitData& HitData);
+	void UpdateHitReaction();
+	void EndHitReaction();
+	void ApplyDeathImpulse(const FVector& CarriedVelocity);
+	void EndStagger();
+
+	/** Picks the bone whose subtree blends into physics for a hit on HitBone, or NAME_None if none is usable. */
+	FName ChooseFlinchBone(FName HitBone) const;
+
+private:
+
+	FLastHitData LastHit;
+
+	bool bHasPhysicsHitBodies = false;
+
+	FName ActiveFlinchBone = NAME_None;
+	float ActiveFlinchWeight = 0.0f;
+	bool bShakeActive = false;
+	float ShakeStrength = 0.0f;
+	FVector ShakeLocalDir = FVector::ForwardVector;
+	float ReactionStartTime = 0.0f;
+	FTimerHandle ReactionTimer;
+
+	FVector BaseMeshLocation = FVector::ZeroVector;
+	FRotator BaseMeshRotation = FRotator::ZeroRotator;
+
+	bool bStaggered = false;
+	float PreStaggerWalkSpeed = 0.0f;
+	FTimerHandle StaggerTimer;
+
+protected:
 
 public:
 
