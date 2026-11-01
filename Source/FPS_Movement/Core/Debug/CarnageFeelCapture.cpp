@@ -12,6 +12,10 @@ static TAutoConsoleVariable<int32> CVarFeelCapture(
 	TEXT("carnage.Debug.FeelCapture"), 0,
 	TEXT("1 = run the scripted weapon-feel screenshot sequence once the player pawn exists."));
 
+static TAutoConsoleVariable<FString> CVarFeelCaptureTour(
+	TEXT("carnage.Debug.FeelCaptureTour"), TEXT(""),
+	TEXT("Optional viewpoints visited after the feel sequence: \"x y z yaw pitch|x y z yaw pitch|...\". Each gets a screenshot."));
+
 static TAutoConsoleVariable<int32> CVarFeelCaptureQuit(
 	TEXT("carnage.Debug.FeelCaptureQuit"), 1,
 	TEXT("1 = quit the game when the feel capture sequence finishes."));
@@ -71,7 +75,43 @@ void UCarnageFeelCapture::BuildSequence()
 		{ 4.06f, [this]() { Shot(TEXT("05b_ADSShotImpact")); } },
 		{ 4.1f,  Cease },
 		{ 5.0f,  []() { SetForceADS(0); } },
-		{ 6.0f,  [World]()
+	};
+
+	// Optional tour: teleport the player to each viewpoint, let it settle, then screenshot.
+	float T = 5.5f;
+	int32 Index = 0;
+#if !UE_BUILD_SHIPPING
+	TArray<FString> Points;
+	CVarFeelCaptureTour.GetValueOnGameThread().ParseIntoArray(Points, TEXT("|"));
+	for (const FString& Point : Points)
+	{
+		TArray<FString> V;
+		Point.ParseIntoArrayWS(V);
+		if (V.Num() < 4)
+		{
+			continue;
+		}
+		const FVector Loc(FCString::Atof(*V[0]), FCString::Atof(*V[1]), FCString::Atof(*V[2]));
+		const FRotator Rot(V.Num() > 4 ? FCString::Atof(*V[4]) : 0.0f, FCString::Atof(*V[3]), 0.0f);
+		const FString Name = FString::Printf(TEXT("Tour_%02d"), Index++);
+		Steps.Add({ T, [World, Loc, Rot]()
+			{
+				if (AShooterCharacter* C = GetPlayerShooter(World))
+				{
+					C->TeleportTo(Loc, FRotator(0.0f, Rot.Yaw, 0.0f), false, true);
+					if (AController* Ctrl = C->GetController())
+					{
+						Ctrl->SetControlRotation(Rot);
+					}
+				}
+			} });
+		Steps.Add({ T + 0.8f, [this, Name]() { Shot(*Name); } });
+		T += 1.2f;
+	}
+#endif
+
+	Steps.Append({
+		{ T + 0.5f,  [World]()
 			{
 #if !UE_BUILD_SHIPPING
 				if (CVarFeelCaptureQuit.GetValueOnGameThread() != 0)
@@ -80,7 +120,7 @@ void UCarnageFeelCapture::BuildSequence()
 				}
 #endif
 			} },
-	};
+	});
 }
 
 void UCarnageFeelCapture::Tick(float DeltaTime)
