@@ -103,7 +103,7 @@ struct FCarnageMuzzleFXSettings
 	FLinearColor LightColor = FLinearColor(1.0f, 0.62f, 0.3f);
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle|Light", meta=(ClampMin=0))
-	float LightIntensity = 60000.0f;
+	float LightIntensity = 20000.0f;
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle|Light", meta=(ClampMin=1, Units="cm"))
 	float LightRadius = 400.0f;

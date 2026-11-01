@@ -304,6 +304,21 @@ void UCarnageWeaponFXSubsystem::PlayProjectileTrail(AActor* Projectile, const FV
 	bActive = true;
 }
 
+void UCarnageWeaponFXSubsystem::StopProjectileTrail(const AActor* Projectile)
+{
+	for (FTracer& T : Tracers)
+	{
+		if (T.bTrail && T.FadeAge < 0.0f && T.Follow.Get() == Projectile)
+		{
+			if (Projectile)
+			{
+				T.Head = Projectile->GetActorLocation();
+			}
+			T.FadeAge = 0.0f;
+		}
+	}
+}
+
 void UCarnageWeaponFXSubsystem::PlayImpact(const FCarnageImpactFXParams& Params)
 {
 	const UCarnageWeaponFXSettings* S = GetDefault<UCarnageWeaponFXSettings>();

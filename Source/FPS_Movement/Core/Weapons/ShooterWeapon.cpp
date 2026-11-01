@@ -18,6 +18,11 @@
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
 #include "FPS_Movement.h"
+#include "CarnageWeaponFXSubsystem.h"
+#include "CarnageWeaponFXSettings.h"
+#include "Camera/PlayerCameraManager.h"
+#include "GameFramework/PlayerController.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 
 AShooterWeapon::AShooterWeapon()
 {
@@ -241,6 +246,10 @@ void AShooterWeapon::FireShot()
 
 	const FVector TargetLocation = WeaponOwner->GetWeaponTargetLocation();
 
+	// unspread aim direction; the flash points this way regardless of how the muzzle socket is oriented
+	FVector ShotStart, ShotAimDir;
+	GetShotRay(TargetLocation, ShotStart, ShotAimDir);
+
 	switch (FireMode)
 	{
 	case EShooterWeaponFireMode::Hitscan:
@@ -274,17 +283,8 @@ void AShooterWeapon::FireShot()
 		}
 	}
 
-	if (MuzzleFlashSystem && FirstPersonMesh)
-	{
-		UNiagaraFunctionLibrary::SpawnSystemAttached(
-			MuzzleFlashSystem, FirstPersonMesh, MuzzleSocketName,
-			FVector::ZeroVector, MuzzleFlashRotationOffset,
-			EAttachLocation::SnapToTarget, true);
-	}
-	if (FireSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
-	}
+	PlayMuzzleFX(ShotAimDir);
+	PlayFireSound();
 
 	WeaponOwner->AddWeaponRecoil(RecoilParams);
 
@@ -330,22 +330,32 @@ void AShooterWeapon::FireProjectile(const FVector& TargetLocation)
 	SpawnParams.Owner = GetOwner();
 	SpawnParams.Instigator = PawnOwner;
 
-	GetWorld()->SpawnActor<AShooterProjectile>(ProjectileClass, ProjectileTransform, SpawnParams);
+	AShooterProjectile* Projectile = GetWorld()->SpawnActor<AShooterProjectile>(ProjectileClass, ProjectileTransform, SpawnParams);
+
+	if (Projectile && bUseProceduralFX)
+	{
+		if (UCarnageWeaponFXSubsystem* FX = UCarnageWeaponFXSubsystem::Get(this))
+		{
+			FX->PlayProjectileTrail(Projectile, GetVisibleMuzzleLocation());
+		}
+	}
 }
 
 void AShooterWeapon::FireHitscan(const FVector& TargetLocation)
 {
-	const FVector MuzzleLoc = FirstPersonMesh->GetSocketLocation(MuzzleSocketName);
+	// Damage is traced from the camera for players (what you see is what you hit) and from the muzzle for NPCs.
+	FVector TraceStart, AimDir;
+	GetShotRay(TargetLocation, TraceStart, AimDir);
 
-	FVector AimDir = (TargetLocation - MuzzleLoc).GetSafeNormal();
 	if (AimVariance > 0.0f)
 	{
 		AimDir = FMath::VRandCone(AimDir, FMath::DegreesToRadians(AimVariance));
 	}
 
-	const FVector TraceEnd = MuzzleLoc + AimDir * HitscanRange;
+	const FVector TraceEnd = TraceStart + AimDir * HitscanRange;
 
-	FCollisionQueryParams QueryParams;
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ShooterHitscan), false);
+	QueryParams.bReturnPhysicalMaterial = true;
 	QueryParams.AddIgnoredActor(this);
 	if (AActor* OwnerActor = GetOwner())
 	{
@@ -353,7 +363,7 @@ void AShooterWeapon::FireHitscan(const FVector& TargetLocation)
 	}
 
 	FHitResult Hit;
-	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, MuzzleLoc, TraceEnd, ECC_Visibility, QueryParams);
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
 	const FVector BeamEnd = bHit ? Hit.ImpactPoint : TraceEnd;
 
 	if (bHit && Hit.GetActor())
@@ -378,16 +388,182 @@ void AShooterWeapon::FireHitscan(const FVector& TargetLocation)
 		ShooterDamage::ApplyHit(HitInfo);
 	}
 
-	if (TracerSystem)
+	// FX start where the barrel visibly is, not at the un-morphed first-person socket
+	const FVector VisibleMuzzle = GetVisibleMuzzleLocation();
+	PlayTracerFX(VisibleMuzzle, BeamEnd);
+	if (bHit)
 	{
-		if (UNiagaraComponent* Tracer = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-			GetWorld(), TracerSystem, MuzzleLoc, AimDir.Rotation()))
+		PlayImpactFX(Hit, AimDir);
+	}
+
+	BP_OnHitscanFired(VisibleMuzzle, BeamEnd, Hit);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FX helpers
+
+APlayerController* AShooterWeapon::GetLocalViewer() const
+{
+	APlayerController* PC = PawnOwner ? Cast<APlayerController>(PawnOwner->GetController()) : nullptr;
+	return (PC && PC->IsLocalController() && PC->PlayerCameraManager) ? PC : nullptr;
+}
+
+void AShooterWeapon::GetShotRay(const FVector& TargetLocation, FVector& OutStart, FVector& OutDirection) const
+{
+	if (const APlayerController* PC = GetLocalViewer())
+	{
+		const APlayerCameraManager* Cam = PC->PlayerCameraManager;
+		OutStart = Cam->GetCameraLocation();
+		OutDirection = (TargetLocation - OutStart).GetSafeNormal(UE_SMALL_NUMBER, Cam->GetCameraRotation().Vector());
+		return;
+	}
+
+	OutStart = FirstPersonMesh->GetSocketLocation(MuzzleSocketName);
+	OutDirection = (TargetLocation - OutStart).GetSafeNormal(UE_SMALL_NUMBER, GetActorForwardVector());
+}
+
+USceneComponent* AShooterWeapon::GetFXMuzzleComponent(bool& bOutFirstPerson) const
+{
+	if (GetLocalViewer() && FirstPersonMesh)
+	{
+		bOutFirstPerson = true;
+		return FirstPersonMesh;
+	}
+
+	bOutFirstPerson = false;
+	if (ThirdPersonMesh && ThirdPersonMesh->DoesSocketExist(MuzzleSocketName))
+	{
+		return ThirdPersonMesh;
+	}
+	return FirstPersonMesh;
+}
+
+FVector AShooterWeapon::GetVisibleMuzzleLocation() const
+{
+	bool bFirstPerson = false;
+	const USceneComponent* Muzzle = GetFXMuzzleComponent(bFirstPerson);
+	if (!Muzzle)
+	{
+		return GetActorLocation();
+	}
+
+	const FVector SocketLoc = Muzzle->GetSocketLocation(MuzzleSocketName);
+	return bFirstPerson ? UCarnageWeaponFXSubsystem::GetVisibleFirstPersonLocation(GetLocalViewer(), SocketLoc) : SocketLoc;
+}
+
+void AShooterWeapon::PlayMuzzleFX(const FVector& AimDirection)
+{
+	bool bFirstPerson = false;
+	USceneComponent* Muzzle = GetFXMuzzleComponent(bFirstPerson);
+	if (!Muzzle)
+	{
+		return;
+	}
+	APlayerController* Viewer = GetLocalViewer();
+
+	if (bUseNiagaraOverrides && MuzzleFlashSystem)
+	{
+		FRotator RelRot = MuzzleFlashRotationOffset;
+		if (bAlignMuzzleFlashToAim)
 		{
-			Tracer->SetVectorParameter(TracerEndParamName, BeamEnd);
+			// express the world aim direction in socket space so the system's +X points down range
+			const FTransform SocketT = Muzzle->GetSocketTransform(MuzzleSocketName, RTS_World);
+			RelRot = SocketT.InverseTransformVectorNoScale(AimDirection).Rotation();
+		}
+
+		if (UNiagaraComponent* Flash = UNiagaraFunctionLibrary::SpawnSystemAttached(
+			MuzzleFlashSystem, Muzzle, MuzzleSocketName,
+			FVector::ZeroVector, RelRot, EAttachLocation::SnapToTarget, true))
+		{
+			// first-person morph is per primitive and not inherited from the parent mesh
+			Flash->SetFirstPersonPrimitiveType(bFirstPerson ? EFirstPersonPrimitiveType::FirstPerson : EFirstPersonPrimitiveType::None);
+		}
+	}
+	else if (bUseProceduralFX)
+	{
+		if (UCarnageWeaponFXSubsystem* FX = UCarnageWeaponFXSubsystem::Get(this))
+		{
+			FX->PlayMuzzleFlash(Muzzle, MuzzleSocketName, AimDirection, bFirstPerson, Viewer);
 		}
 	}
 
-	BP_OnHitscanFired(MuzzleLoc, BeamEnd, Hit);
+	if (bUseProceduralFX)
+	{
+		if (UCarnageWeaponFXSubsystem* FX = UCarnageWeaponFXSubsystem::Get(this))
+		{
+			FVector Forward = AimDirection;
+			FVector Right, Up;
+			if (Viewer)
+			{
+				const FRotator CamRot = Viewer->PlayerCameraManager->GetCameraRotation();
+				Right = FRotationMatrix(CamRot).GetUnitAxis(EAxis::Y);
+				Up = FRotationMatrix(CamRot).GetUnitAxis(EAxis::Z);
+			}
+			else
+			{
+				Right = FVector::CrossProduct(FVector::UpVector, Forward).GetSafeNormal(UE_SMALL_NUMBER, GetActorRightVector());
+				Up = FVector::CrossProduct(Forward, Right);
+			}
+			const FVector InheritVelocity = PawnOwner ? PawnOwner->GetVelocity() : FVector::ZeroVector;
+			FX->PlayShellEject(Muzzle, GetDefault<UCarnageWeaponFXSettings>()->Shell.SocketName, bFirstPerson, Right, Up, Forward, InheritVelocity);
+		}
+	}
+}
+
+void AShooterWeapon::PlayTracerFX(const FVector& VisibleStart, const FVector& End)
+{
+	if (bUseNiagaraOverrides && TracerSystem)
+	{
+		if (UNiagaraComponent* Tracer = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(), TracerSystem, VisibleStart, (End - VisibleStart).Rotation()))
+		{
+			Tracer->SetVectorParameter(TracerEndParamName, End);
+		}
+		return;
+	}
+
+	if (bUseProceduralFX)
+	{
+		if (UCarnageWeaponFXSubsystem* FX = UCarnageWeaponFXSubsystem::Get(this))
+		{
+			FX->PlayTracer(VisibleStart, End);
+		}
+	}
+}
+
+void AShooterWeapon::PlayImpactFX(const FHitResult& Hit, const FVector& ShotDirection) const
+{
+	if (!bUseProceduralFX)
+	{
+		return;
+	}
+
+	UCarnageWeaponFXSubsystem* FX = UCarnageWeaponFXSubsystem::Get(this);
+	if (!FX)
+	{
+		return;
+	}
+
+	FCarnageImpactFXParams Params;
+	Params.Location = Hit.ImpactPoint;
+	Params.Normal = Hit.ImpactNormal;
+	Params.ShotDirection = ShotDirection;
+	Params.bHitPawn = Cast<APawn>(Hit.GetActor()) != nullptr;
+	Params.SurfaceType = UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get());
+	Params.HitComponent = Hit.GetComponent();
+	FX->PlayImpact(Params);
+}
+
+void AShooterWeapon::PlayFireSound() const
+{
+	if (!FireSound)
+	{
+		return;
+	}
+
+	const float Pitch = 1.0f + FMath::FRandRange(-FireSoundPitchVariance, FireSoundPitchVariance);
+	const float Volume = 1.0f + FMath::FRandRange(-FireSoundVolumeVariance, FireSoundVolumeVariance);
+	UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation(), Volume, Pitch);
 }
 
 FTransform AShooterWeapon::CalculateProjectileSpawnTransform(const FVector& TargetLocation) const

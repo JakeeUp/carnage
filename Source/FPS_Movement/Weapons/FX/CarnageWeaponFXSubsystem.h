@@ -95,6 +95,9 @@ public:
 	/** Streak that trails a projectile actor until it stops or is destroyed. */
 	void PlayProjectileTrail(AActor* Projectile, const FVector& VisibleStart);
 
+	/** Fades out any trail following this projectile (call when it hits something). */
+	void StopProjectileTrail(const AActor* Projectile);
+
 	/** Sparks, flash, dust and (surfaces only) a bullet-hole decal. */
 	void PlayImpact(const FCarnageImpactFXParams& Params);
 
