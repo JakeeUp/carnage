@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Brushes/SlateColorBrush.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "ShooterHUDWidget.generated.h"
 
 class AShooterCharacter;
@@ -314,6 +315,40 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Rank", meta=(ClampMin=0, ClampMax=1))
 	float RankIdleAlpha = 0.35f;
 
+	// ── Bodycam overlay (shown while UBodycamComponent is on) ───────────
+
+	/** Opacity of the vitals / ammo / rank panels at full bodycam blend. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=1))
+	float BodycamPanelOpacity = 0.65f;
+
+	/** Keep a small center dot in bodycam mode (the crosshair ticks are always hidden). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
+	bool bBodycamCenterDot = false;
+
+	/** Fictional device / unit line drawn along the bottom edge. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
+	FString BodycamDeviceId = TEXT("CARNAGE // UNIT 07 // CAM-02");
+
+	/** Overlay inset from the screen edges, as a fraction of each screen dimension. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=0.25))
+	float BodycamEdgeInset = 0.04f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
+	int32 BodycamFontSize = 15;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
+	FLinearColor BodycamTextColor = FLinearColor(0.93f, 0.93f, 0.89f, 0.92f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
+	FLinearColor BodycamRecColor = FLinearColor(1.0f, 0.06f, 0.04f, 1.0f);
+
+	/** Battery percentage when the HUD is created, and its slow drain. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=100))
+	float BodycamBatteryStart = 87.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0))
+	float BodycamBatteryDrainPerMinute = 1.0f;
+
 protected:
 
 	virtual void NativeConstruct() override;
@@ -359,6 +394,7 @@ private:
 	void PaintVitals(const FPainter& P) const;
 	void PaintAmmo(const FPainter& P) const;
 	void PaintRank(const FPainter& P) const;
+	void PaintBodycamOverlay(const FPainter& P) const;
 
 	FLinearColor GetRankColor(int32 RankIndex) const;
 
@@ -371,8 +407,13 @@ private:
 
 	FSlateColorBrush SolidBrush = FSlateColorBrush(FLinearColor::White);
 
+	FSlateRoundedBoxBrush DotBrush = FSlateRoundedBoxBrush(FLinearColor::White, 6.0f);
+
 	/** Unscaled HUD clock (accumulated Slate delta). */
 	float Now = 0.0f;
+
+	/** UBodycamComponent blend alpha of the bound character (0 = normal HUD). */
+	float BodycamAlpha = 0.0f;
 
 	// Crosshair
 	float Bloom = 0.0f;
