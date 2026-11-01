@@ -441,8 +441,12 @@ FVector AShooterCharacter::GetWeaponTargetLocation()
 {
 	FHitResult OutHit;
 
+	// Aim follows the control rotation (the gun), not the rendered view: camera modifiers such
+	// as the bodycam lag the POV behind the control rotation. The camera component's own
+	// rotation is only refreshed when the camera manager updates, so read the controller directly.
 	const FVector Start = GetFirstPersonCameraComponent()->GetComponentLocation();
-	const FVector End = Start + (GetFirstPersonCameraComponent()->GetForwardVector() * MaxAimDistance);
+	const FRotator AimRot = Controller ? Controller->GetControlRotation() : GetFirstPersonCameraComponent()->GetComponentRotation();
+	const FVector End = Start + (AimRot.Vector() * MaxAimDistance);
 
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(this);
