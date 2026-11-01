@@ -11,6 +11,7 @@
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "CarnageWeaponFXSubsystem.h"
 
 AShooterProjectile::AShooterProjectile()
 {
@@ -68,6 +69,22 @@ void AShooterProjectile::NotifyHit(class UPrimitiveComponent* MyComp, AActor* Ot
 
 		ProcessHit(Other, OtherComp, Hit.ImpactPoint, -Hit.ImpactNormal, Hit.BoneName, bAllowHeadshots);
 
+	}
+
+	if (UCarnageWeaponFXSubsystem* FX = UCarnageWeaponFXSubsystem::Get(this))
+	{
+		FX->StopProjectileTrail(this);
+
+		if (bSpawnImpactFX && !bExplodeOnHit)
+		{
+			FCarnageImpactFXParams Params;
+			Params.Location = Hit.ImpactPoint;
+			Params.Normal = Hit.ImpactNormal;
+			Params.ShotDirection = (Hit.TraceEnd - Hit.TraceStart).GetSafeNormal(UE_SMALL_NUMBER, -Hit.ImpactNormal);
+			Params.bHitPawn = Cast<APawn>(Other) != nullptr;
+			Params.HitComponent = OtherComp;
+			FX->PlayImpact(Params);
+		}
 	}
 
 	BP_OnProjectileHit(Hit);

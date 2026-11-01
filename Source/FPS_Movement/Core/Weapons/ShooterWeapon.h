@@ -17,6 +17,8 @@ class UAnimInstance;
 class UNiagaraSystem;
 class USoundBase;
 class UDamageType;
+class APlayerController;
+class USceneComponent;
 
 UENUM(BlueprintType)
 enum class EShooterWeaponFireMode : uint8
@@ -114,21 +116,47 @@ protected:
 	float HeadshotHeightFraction = 0.8f;
 
 	// ── FX ──────────────────────────────────────────────────────────────
+	// Muzzle flash, tracer, impacts and shells are procedural by default
+	// (UCarnageWeaponFXSubsystem, tuned in Project Settings > Game > Carnage Weapon FX).
 
+	/** Draw the procedural muzzle flash / tracer / impact / shell FX. */
 	UPROPERTY(EditAnywhere, Category="FX")
+	bool bUseProceduralFX = true;
+
+	/**
+	 * When set, the Niagara systems below (where assigned) replace the procedural muzzle flash and tracer.
+	 * Off by default so placeholder template systems on existing Blueprints don't override the procedural FX.
+	 */
+	UPROPERTY(EditAnywhere, Category="FX|Niagara Overrides")
+	bool bUseNiagaraOverrides = false;
+
+	UPROPERTY(EditAnywhere, Category="FX|Niagara Overrides", meta=(EditCondition="bUseNiagaraOverrides"))
 	TObjectPtr<UNiagaraSystem> MuzzleFlashSystem;
 
-	UPROPERTY(EditAnywhere, Category="FX")
+	/** Point the Niagara muzzle flash along the actual aim direction instead of trusting the socket axes. */
+	UPROPERTY(EditAnywhere, Category="FX|Niagara Overrides", meta=(EditCondition="bUseNiagaraOverrides"))
+	bool bAlignMuzzleFlashToAim = true;
+
+	/** Socket-relative rotation for the Niagara muzzle flash; only used when bAlignMuzzleFlashToAim is off. */
+	UPROPERTY(EditAnywhere, Category="FX|Niagara Overrides", meta=(EditCondition="bUseNiagaraOverrides && !bAlignMuzzleFlashToAim"))
 	FRotator MuzzleFlashRotationOffset = FRotator::ZeroRotator;
 
-	UPROPERTY(EditAnywhere, Category="FX")
-	TObjectPtr<USoundBase> FireSound;
-
-	UPROPERTY(EditAnywhere, Category="FX")
+	UPROPERTY(EditAnywhere, Category="FX|Niagara Overrides", meta=(EditCondition="bUseNiagaraOverrides"))
 	TObjectPtr<UNiagaraSystem> TracerSystem;
 
-	UPROPERTY(EditAnywhere, Category="FX")
+	UPROPERTY(EditAnywhere, Category="FX|Niagara Overrides", meta=(EditCondition="bUseNiagaraOverrides"))
 	FName TracerEndParamName = FName("BeamEnd");
+
+	UPROPERTY(EditAnywhere, Category="FX|Sound")
+	TObjectPtr<USoundBase> FireSound;
+
+	/** Random per-shot pitch variation (0.06 = +/-6%). */
+	UPROPERTY(EditAnywhere, Category="FX|Sound", meta=(ClampMin=0, ClampMax=0.5))
+	float FireSoundPitchVariance = 0.06f;
+
+	/** Random per-shot volume variation (0.05 = +/-5%). */
+	UPROPERTY(EditAnywhere, Category="FX|Sound", meta=(ClampMin=0, ClampMax=0.5))
+	float FireSoundVolumeVariance = 0.05f;
 
 	UPROPERTY(EditAnywhere, Category="Aim")
 	FName MuzzleSocketName;
@@ -217,6 +245,28 @@ protected:
 	virtual void FireHitscan(const FVector& TargetLocation);
 
 	FTransform CalculateProjectileSpawnTransform(const FVector& TargetLocation) const;
+
+	// ── FX helpers ──────────────────────────────────────────────────────
+
+	/** Owning local player controller with a camera manager, or null (NPCs, remote pawns). */
+	APlayerController* GetLocalViewer() const;
+
+	/** Damage-trace origin and unspread direction: camera for local players, muzzle for everyone else. */
+	void GetShotRay(const FVector& TargetLocation, FVector& OutStart, FVector& OutDirection) const;
+
+	/** Mesh carrying the muzzle used for FX, and whether it renders first-person. */
+	USceneComponent* GetFXMuzzleComponent(bool& bOutFirstPerson) const;
+
+	/** Where the muzzle visually appears in the world (first-person morph applied). */
+	FVector GetVisibleMuzzleLocation() const;
+
+	void PlayMuzzleFX(const FVector& AimDirection);
+
+	void PlayTracerFX(const FVector& VisibleStart, const FVector& End);
+
+	void PlayImpactFX(const FHitResult& Hit, const FVector& ShotDirection) const;
+
+	void PlayFireSound() const;
 
 	UFUNCTION(BlueprintImplementableEvent, Category="Weapon", meta = (DisplayName = "On Shot Fired"))
 	void BP_OnShotFired();

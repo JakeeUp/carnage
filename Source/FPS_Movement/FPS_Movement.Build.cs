@@ -23,7 +23,9 @@ public class FPS_Movement : ModuleRules
 			"GameplayAbilities",
 			"GameplayTags",
 			"GameplayTasks",
-			"Niagara"
+			"Niagara",
+			"DeveloperSettings",
+			"PhysicsCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
@@ -34,6 +36,7 @@ public class FPS_Movement : ModuleRules
 			"FPS_Movement/Movement",       // custom: Doom/Titanfall movement + momentum
 			"FPS_Movement/Camera",         // custom: movement-driven camera juice
 			"FPS_Movement/Weapons",        // custom: recoil / sway feel
+			"FPS_Movement/Weapons/FX",     // custom: procedural gunfire FX (tracers, flashes, impacts)
 			"FPS_Movement/Carnage",        // custom: GAS health/damage layer
 			"FPS_Movement/Core",       // the shooter game
 			"FPS_Movement/Core/AI",
