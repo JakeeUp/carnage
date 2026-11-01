@@ -175,6 +175,11 @@ void AShooterWeapon::StartFiring()
 {
 	if (bIsReloading || bIsDrawing || bIsHolstering)
 	{
+		if (CarnageAILogEnabled())
+		{
+			UE_LOG(LogFPS_Movement, Display, TEXT("[AILog] %s refused fire: reloading=%d drawing=%d holstering=%d"),
+				*GetNameSafe(GetOwner()), bIsReloading ? 1 : 0, bIsDrawing ? 1 : 0, bIsHolstering ? 1 : 0);
+		}
 		return;
 	}
 

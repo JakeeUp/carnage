@@ -566,9 +566,16 @@ void AShooterNPC::StartShooting(AActor* ActorToShoot)
 		return;
 	}
 
+	const bool bNewTarget = CurrentAimTarget.Get() != ActorToShoot || !bIsShooting;
 	CurrentAimTarget = ActorToShoot;
 
 	bIsShooting = true;
+
+	// The StateTree re-enters the shoot task every tick; only log real engagements.
+	if (bNewTarget && CarnageAILogEnabled())
+	{
+		UE_LOG(LogFPS_Movement, Display, TEXT("[AILog] %s StartShooting %s weapon=%s"), *GetName(), *GetNameSafe(ActorToShoot), *GetNameSafe(Weapon));
+	}
 
 	if (Weapon)
 	{

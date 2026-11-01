@@ -2,6 +2,7 @@
 
 #include "Core/AI/ShooterAIController.h"
 #include "ShooterNPC.h"
+#include "FPS_Movement.h"
 #include "Components/StateTreeAIComponent.h"
 #include "Perception/AIPerceptionComponent.h"
 #include "Navigation/PathFollowingComponent.h"
@@ -74,6 +75,11 @@ void AShooterAIController::ClearCurrentTarget()
 
 void AShooterAIController::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
+	if (CarnageAILogEnabled())
+	{
+		UE_LOG(LogFPS_Movement, Display, TEXT("[AILog] %s perceived %s sensed=%d bound=%d"),
+			*GetNameSafe(GetPawn()), *GetNameSafe(Actor), Stimulus.WasSuccessfullySensed() ? 1 : 0, OnShooterPerceptionUpdated.IsBound() ? 1 : 0);
+	}
 	OnShooterPerceptionUpdated.ExecuteIfBound(Actor, Stimulus);
 }
 

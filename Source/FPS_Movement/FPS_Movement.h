@@ -13,3 +13,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogFPS_Movement, Log, All);
  * so the trace lands on per-bone bodies instead (see ShooterDamage::SetupPerBoneWeaponHits).
  */
 #define ECC_Weapon ECC_GameTraceChannel2
+
+/** Dev-only: true when carnage.Debug.AILog is set (AI perception / targeting / firing decisions). */
+FPS_MOVEMENT_API bool CarnageAILogEnabled();
