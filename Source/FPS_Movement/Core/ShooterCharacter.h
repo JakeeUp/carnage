@@ -211,6 +211,9 @@ public:
 
 	virtual void DoAim(float Yaw, float Pitch) override;
 
+	/** Converts raw mouse counts to the Valorant-scale sensitivity in UCarnageInputSettings. */
+	virtual FVector2D GetMouseLookScale() const override;
+
 	virtual void DoMove(float Right, float Forward)  override;
 
 	virtual void DoJumpStart()  override;

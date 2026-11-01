@@ -47,6 +47,12 @@ protected:
 
 	void LookInput(const FInputActionValue& Value);
 
+	/** Mouse look: raw counts scaled by GetMouseLookScale() so mouse sensitivity is independent of gamepad look. */
+	void MouseLookInput(const FInputActionValue& Value);
+
+	/** Per-axis multiplier applied to raw mouse look (X = yaw, Y = pitch). 1 = engine default. */
+	virtual FVector2D GetMouseLookScale() const { return FVector2D::UnitVector; }
+
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoAim(float Yaw, float Pitch);
 

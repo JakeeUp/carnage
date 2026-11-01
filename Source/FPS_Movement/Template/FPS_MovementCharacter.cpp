@@ -48,7 +48,7 @@ void AFPS_MovementCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AFPS_MovementCharacter::MoveInput);
 
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AFPS_MovementCharacter::LookInput);
-		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AFPS_MovementCharacter::LookInput);
+		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AFPS_MovementCharacter::MouseLookInput);
 	}
 	else
 	{
@@ -70,6 +70,13 @@ void AFPS_MovementCharacter::LookInput(const FInputActionValue& Value)
 
 	DoAim(LookAxisVector.X, LookAxisVector.Y);
 
+}
+
+void AFPS_MovementCharacter::MouseLookInput(const FInputActionValue& Value)
+{
+	const FVector2D LookAxisVector = Value.Get<FVector2D>() * GetMouseLookScale();
+
+	DoAim(LookAxisVector.X, LookAxisVector.Y);
 }
 
 void AFPS_MovementCharacter::DoAim(float Yaw, float Pitch)

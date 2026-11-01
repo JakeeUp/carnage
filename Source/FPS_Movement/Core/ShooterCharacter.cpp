@@ -28,6 +28,9 @@
 #include "GameplayEffect.h"
 #include "ViewSpringMath.h"
 #include "HAL/IConsoleManager.h"
+#include "CarnageInputSettings.h"
+#include "GameFramework/InputSettings.h"
+#include "GameFramework/PlayerInput.h"
 #include "FPS_Movement.h"
 #include "ShooterDamageUtils.h"
 
@@ -234,6 +237,43 @@ float AShooterCharacter::TakeDamage(float Damage, struct FDamageEvent const& Dam
 	return Damage;
 }
 
+FVector2D AShooterCharacter::GetMouseLookScale() const
+{
+	// Raw mouse counts are scaled twice before they become rotation: first by the MouseX/MouseY
+	// axis sensitivity in the input settings (UPlayerInput::MassageAxisInput, 0.07 by default),
+	// then by the controller's legacy input scales (2.5 by default). Measured with
+	// carnage.Debug.SensTest. Divide both out and apply the target degrees per count directly.
+	auto AxisSensitivity = [](FName AxisKey)
+	{
+		for (const FInputAxisConfigEntry& Entry : GetDefault<UInputSettings>()->AxisConfig)
+		{
+			if (Entry.AxisKeyName == AxisKey)
+			{
+				return FMath::Abs(Entry.AxisProperties.Sensitivity);
+			}
+		}
+		return 1.0f;
+	};
+
+	float YawUnitDegrees = AxisSensitivity(EKeys::MouseX.GetFName());
+	float PitchUnitDegrees = AxisSensitivity(EKeys::MouseY.GetFName());
+	if (GetDefault<UInputSettings>()->bEnableLegacyInputScales)
+	{
+		if (const APlayerController* PC = Cast<APlayerController>(GetController()))
+		{
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+			YawUnitDegrees *= FMath::Abs(PC->GetDeprecatedInputYawScale());
+			PitchUnitDegrees *= FMath::Abs(PC->GetDeprecatedInputPitchScale());
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+		}
+	}
+
+	const float Target = UCarnageInputSettings::GetTargetDegreesPerCount();
+	return FVector2D(
+		YawUnitDegrees > KINDA_SMALL_NUMBER ? Target / YawUnitDegrees : Target,
+		PitchUnitDegrees > KINDA_SMALL_NUMBER ? Target / PitchUnitDegrees : Target);
+}
+
 void AShooterCharacter::DoAim(float Yaw, float Pitch)
 {
 	if (!IsDead())
@@ -250,7 +290,8 @@ void AShooterCharacter::DoAim(float Yaw, float Pitch)
 				const float CurFOV = FMath::Clamp(FMath::Lerp(BaseFOV, AimFOV, ADSAlpha), 5.0f, 170.0f);
 				LookScale = FMath::Tan(FMath::DegreesToRadians(CurFOV) * 0.5f) / FMath::Tan(FMath::DegreesToRadians(BaseFOV) * 0.5f);
 			}
-			LookScale *= FMath::Lerp(1.0f, ADSLookSensitivityMultiplier, ADSAlpha);
+			const float ADSMultiplier = ADSLookSensitivityMultiplier * GetDefault<UCarnageInputSettings>()->ADSSensitivityMultiplier;
+			LookScale *= FMath::Lerp(1.0f, ADSMultiplier, ADSAlpha);
 		}
 
 		Yaw *= LookScale;
