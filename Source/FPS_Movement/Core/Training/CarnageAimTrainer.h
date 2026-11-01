@@ -66,10 +66,12 @@ struct FCarnageAimButton
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> MID;
 
-	/** Mode this button starts, or Count for START (replay the current mode). */
+	/** Mode this button starts, or Count for START (replay the current mode). Saved with the level. */
+	UPROPERTY()
 	ECarnageAimMode Mode = ECarnageAimMode::Count;
 
-	/** This button toggles infinite ammo instead of starting a run. */
+	/** This button toggles infinite ammo instead of starting a run. Saved with the level. */
+	UPROPERTY()
 	bool bInfiniteAmmoToggle = false;
 };
 
