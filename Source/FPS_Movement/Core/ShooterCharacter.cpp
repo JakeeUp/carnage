@@ -29,6 +29,7 @@
 #include "ViewSpringMath.h"
 #include "HAL/IConsoleManager.h"
 #include "FPS_Movement.h"
+#include "ShooterDamageUtils.h"
 
 #if !UE_BUILD_SHIPPING
 static TAutoConsoleVariable<int32> CVarCarnageForceADS(
@@ -87,6 +88,13 @@ void AShooterCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	DoomMovement = Cast<UDoomMovementComponent>(GetCharacterMovement());
+
+	// The third-person mesh is owner-hidden, so with the default AlwaysTickPose its bones (and
+	// hit bodies) would never refresh. Query-only bodies: the player has no physics flinch.
+	if (bPerBoneWeaponHits && ShooterDamage::SetupPerBoneWeaponHits(this, false))
+	{
+		GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	}
 
 	if (AbilitySystem)
 	{

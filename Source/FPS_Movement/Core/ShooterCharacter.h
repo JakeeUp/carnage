@@ -94,6 +94,14 @@ protected:
 	UPROPERTY(EditAnywhere, Category ="Aim", meta = (ClampMin = 0, ClampMax = 100000, Units = "cm"))
 	float MaxAimDistance = 10000.0f;
 
+	/**
+	 * Enemy hitscan hits the third-person mesh's physics-asset bodies instead of the capsule
+	 * (needs a physics asset; otherwise the capsule stays the hit volume). Also keeps that
+	 * owner-hidden mesh refreshing its bones so the bodies follow the animation.
+	 */
+	UPROPERTY(EditAnywhere, Category="Health")
+	bool bPerBoneWeaponHits = true;
+
 	UPROPERTY(EditAnywhere, Category="Health")
 	float MaxHP = 500.0f;
 
