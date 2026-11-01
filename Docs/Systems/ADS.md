@@ -128,7 +128,14 @@ fields are `VisualKickUp`, `VisualKickRollRandom`, `VisualKickYawRandom`, `ViewP
 - `UWeaponRecoilComponent`: `SprintPoseRotation/Location`, `SlidePoseRotation/Location` (signs
   depend on the arms rig), `LandingImpulseScale`, and the bob amplitudes.
 
-## 6. Debug
+## 6. Camera modifiers and aim
+
+Hitscan (`AShooterWeapon::GetShotRay`) and `AShooterCharacter::GetWeaponTargetLocation` trace
+from the camera component along the control rotation. They don't use the camera manager's final
+POV. View-only modifiers (view punch, the bodycam lag and chest mount in
+[Bodycam.md](Bodycam.md)) therefore never move the aim.
+
+## 7. Debug
 
 These console variables are available in non-shipping builds:
 
