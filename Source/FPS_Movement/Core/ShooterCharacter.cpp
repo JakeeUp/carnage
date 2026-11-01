@@ -592,7 +592,13 @@ void AShooterCharacter::DoStartSprint()
 		}
 
 		DoomMovement->StartSprint();
-		PlayCameraShake(SprintCameraShake);
+
+		// CS_Sprint is a 1 s one-shot lurch (wave oscillator, blend-out = duration), not a loop, so
+		// it never needs stopping. Sprint is forward-only, so skip it when the press won't sprint.
+		if (DoomMovement->IsSprintDirectionAllowed())
+		{
+			PlayCameraShake(SprintCameraShake);
+		}
 	}
 }
 

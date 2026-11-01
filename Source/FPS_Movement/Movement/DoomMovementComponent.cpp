@@ -100,7 +100,9 @@ float UDoomMovementComponent::GetMaxSpeed() const
 		return SlideMaxSpeed * ExternalSpeedScale;
 	}
 
-	if (IsMovingOnGround() && bWantsToSprint && !IsCrouching())
+	// Sprint speed is forward-only; strafing or backpedalling with sprint held falls through to
+	// walk speed and the CMC brakes any excess back down.
+	if (IsMovingOnGround() && bWantsToSprint && !IsCrouching() && IsSprintDirectionAllowed())
 	{
 		return SprintSpeed * ExternalSpeedScale * ADSSpeedScale;
 	}
@@ -149,9 +151,33 @@ void UDoomMovementComponent::StopSprint()
 	bWantsToSprint = false;
 }
 
+bool UDoomMovementComponent::IsSprintDirectionAllowed() const
+{
+	if (!CharacterOwner)
+	{
+		return true;
+	}
+
+	// Input direction wins so the switch happens the moment the player starts strafing; fall
+	// back to velocity when coasting without input.
+	FVector MoveDir = Acceleration.GetSafeNormal2D();
+	if (MoveDir.IsNearlyZero())
+	{
+		MoveDir = Velocity.GetSafeNormal2D();
+	}
+	if (MoveDir.IsNearlyZero())
+	{
+		return true;
+	}
+
+	const FVector Facing = CharacterOwner->GetActorForwardVector().GetSafeNormal2D();
+	return FVector::DotProduct(MoveDir, Facing) >= FMath::Cos(FMath::DegreesToRadians(SprintMaxAngle));
+}
+
 bool UDoomMovementComponent::IsSprinting() const
 {
 	return bWantsToSprint && IsMovingOnGround() && !IsCrouching() && !bIsSliding
+		&& IsSprintDirectionAllowed()
 		&& Velocity.SizeSquared2D() > FMath::Square(MaxWalkSpeed * 0.5f);
 }
 
@@ -182,6 +208,12 @@ void UDoomMovementComponent::StartSlide()
 		return;
 	}
 
+	// The sprint boost keys off real sprint state, sampled BEFORE bIsSliding is set (IsSprinting()
+	// is false while sliding): a forward sprint, or sprint held while still carrying more than walk
+	// speed (sliding out at an angle right after a forward sprint). A strafe/backpedal with sprint
+	// held is already at walk speed, so it gets no boost.
+	const bool bSprintEntry = IsSprinting() || (bWantsToSprint && Velocity.Size2D() > MaxWalkSpeed * 1.05f);
+
 	bIsSliding = true;
 	SlideTimer = 0.0f;
 	SlideAirTime = 0.0f;
@@ -195,8 +227,8 @@ void UDoomMovementComponent::StartSlide()
 		SlideDirection = CharacterOwner->GetActorForwardVector().GetSafeNormal2D();
 	}
 
-	const float EntryMultiplier = SlideEntrySpeedMultiplier * (IsSprinting() ? SprintSlideEntryBoost : 1.0f);
 	const float CurrentSpeed2D = Velocity.Size2D();
+	const float EntryMultiplier = SlideEntrySpeedMultiplier * (bSprintEntry ? SprintSlideEntryBoost : 1.0f);
 	const float SlideSpeed = FMath::Min(CurrentSpeed2D * EntryMultiplier, SlideMaxSpeed);
 	Velocity = SlideDirection * SlideSpeed + FVector(0, 0, Velocity.Z);
 
