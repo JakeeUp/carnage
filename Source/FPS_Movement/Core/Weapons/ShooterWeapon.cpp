@@ -494,7 +494,10 @@ void AShooterWeapon::PlayMuzzleFX(const FVector& AimDirection)
 	{
 		if (UCarnageWeaponFXSubsystem* FX = UCarnageWeaponFXSubsystem::Get(this))
 		{
-			FX->PlayMuzzleFlash(Muzzle, MuzzleSocketName, AimDirection, bFirstPerson, Viewer);
+			// Shrink the flash while aiming so it reads as a flash past the sights, not a wall of light.
+			const AShooterCharacter* OwnerChar = Cast<AShooterCharacter>(GetOwner());
+			const float ADSAlpha = OwnerChar ? OwnerChar->GetADSAlpha() : 0.0f;
+			FX->PlayMuzzleFlash(Muzzle, MuzzleSocketName, AimDirection, bFirstPerson, Viewer, FMath::Lerp(1.0f, ADSMuzzleFlashScale, ADSAlpha));
 		}
 	}
 

@@ -87,7 +87,7 @@ public:
 	 * @param bFirstPerson    render with the first-person morph (AttachTo is a first-person primitive)
 	 * @param Viewer          owning player, used to place the light where the first-person muzzle visually is
 	 */
-	void PlayMuzzleFlash(USceneComponent* AttachTo, FName SocketName, const FVector& AimDirection, bool bFirstPerson, const APlayerController* Viewer);
+	void PlayMuzzleFlash(USceneComponent* AttachTo, FName SocketName, const FVector& AimDirection, bool bFirstPerson, const APlayerController* Viewer, float SizeScale = 1.0f);
 
 	/** Fast streak from the visible muzzle to the impact. Skipped if the shot is shorter than Tracer.MinDistance. */
 	void PlayTracer(const FVector& VisibleStart, const FVector& End);

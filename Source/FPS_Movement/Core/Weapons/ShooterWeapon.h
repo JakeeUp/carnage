@@ -150,6 +150,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="FX|Sound")
 	TObjectPtr<USoundBase> FireSound;
 
+	/** Procedural muzzle flash size multiplier at full ADS (blended by the ADS alpha). */
+	UPROPERTY(EditAnywhere, Category="FX", meta=(ClampMin=0, ClampMax=1))
+	float ADSMuzzleFlashScale = 0.5f;
+
 	/** Random per-shot pitch variation (0.06 = +/-6%). */
 	UPROPERTY(EditAnywhere, Category="FX|Sound", meta=(ClampMin=0, ClampMax=0.5))
 	float FireSoundPitchVariance = 0.06f;

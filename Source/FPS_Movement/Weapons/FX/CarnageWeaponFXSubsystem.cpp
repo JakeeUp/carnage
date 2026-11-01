@@ -236,7 +236,7 @@ FVector UCarnageWeaponFXSubsystem::GetVisibleFirstPersonLocation(const APlayerCo
 	return FirstPersonWorldLocation;
 }
 
-void UCarnageWeaponFXSubsystem::PlayMuzzleFlash(USceneComponent* AttachTo, FName SocketName, const FVector& AimDirection, bool bFirstPerson, const APlayerController* Viewer)
+void UCarnageWeaponFXSubsystem::PlayMuzzleFlash(USceneComponent* AttachTo, FName SocketName, const FVector& AimDirection, bool bFirstPerson, const APlayerController* Viewer, float SizeScale)
 {
 	const UCarnageWeaponFXSettings* S = GetDefault<UCarnageWeaponFXSettings>();
 	if (!S->Muzzle.bEnabled || !AttachTo || !EnsureHost())
@@ -254,7 +254,7 @@ void UCarnageWeaponFXSubsystem::PlayMuzzleFlash(USceneComponent* AttachTo, FName
 	F.LocalDir = SocketT.InverseTransformVectorNoScale(Dir);
 	F.LastOrigin = SocketT.GetLocation();
 	F.LastDir = Dir;
-	F.Scale = 1.0f + Rand.FRandRange(-S->Muzzle.ScaleJitter, S->Muzzle.ScaleJitter);
+	F.Scale = (1.0f + Rand.FRandRange(-S->Muzzle.ScaleJitter, S->Muzzle.ScaleJitter)) * FMath::Max(SizeScale, 0.0f);
 	F.bFirstPerson = bFirstPerson;
 	F.Light = S->Muzzle.bLightEnabled ? AcquireLight() : INDEX_NONE;
 	if (F.Light != INDEX_NONE)

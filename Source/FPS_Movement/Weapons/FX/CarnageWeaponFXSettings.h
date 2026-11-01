@@ -68,19 +68,19 @@ struct FCarnageMuzzleFXSettings
 
 	/** Forward plume length / radius (cm, before random scale). */
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle", meta=(ClampMin=0, Units="cm"))
-	float PlumeLength = 16.0f;
+	float PlumeLength = 9.0f;
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle", meta=(ClampMin=0, Units="cm"))
-	float PlumeWidth = 4.5f;
+	float PlumeWidth = 2.8f;
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle", meta=(ClampMin=0, Units="cm"))
-	float PetalLength = 7.0f;
+	float PetalLength = 4.0f;
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle", meta=(ClampMin=0, Units="cm"))
-	float PetalWidth = 1.4f;
+	float PetalWidth = 0.9f;
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle", meta=(ClampMin=0, Units="cm"))
-	float CoreSize = 3.5f;
+	float CoreSize = 2.0f;
 
 	/** Random uniform scale variation (0.2 = +/-20%). */
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle", meta=(ClampMin=0, ClampMax=1))
@@ -94,7 +94,7 @@ struct FCarnageMuzzleFXSettings
 	FLinearColor Color = FLinearColor(1.0f, 0.55f, 0.18f);
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle", meta=(ClampMin=0))
-	float Intensity = 40.0f;
+	float Intensity = 12.0f;
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle|Light")
 	bool bLightEnabled = true;
@@ -103,10 +103,10 @@ struct FCarnageMuzzleFXSettings
 	FLinearColor LightColor = FLinearColor(1.0f, 0.62f, 0.3f);
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle|Light", meta=(ClampMin=0))
-	float LightIntensity = 20000.0f;
+	float LightIntensity = 2500.0f;
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle|Light", meta=(ClampMin=1, Units="cm"))
-	float LightRadius = 400.0f;
+	float LightRadius = 280.0f;
 
 	UPROPERTY(EditAnywhere, Config, Category="Muzzle|Light", meta=(ClampMin=0.01, Units="s"))
 	float LightDuration = 0.045f;
