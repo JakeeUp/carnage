@@ -32,3 +32,6 @@ _Removed_Backup/
 /Content/FirstPersonPistolAnimations/
 /Content/Characters/
 /Content/Weapons/
+
+# Claude Code local worktrees/settings
+.claude/
