@@ -104,8 +104,11 @@ float w = smoothstep(0.08, 0.45, sqrt(r2));
 float k1 = K1 * Amount * w;
 float k2 = K2 * Amount * w;
 float f = 1.0 + k1 * r2 + k2 * r2 * r2;
-// Normalise so the top/bottom edge centres (r^2 = 0.25) map onto themselves.
-float n = 1.0 + K1 * Amount * 0.25 + K2 * Amount * 0.0625;
+// Normalise so the left/right edge centres (r^2 = (Aspect/2)^2) map onto themselves. Normalising
+// at the top/bottom edge instead (r^2 = 0.25) samples ~7% outside the frame at the sides on 16:9.
+// Only the corners still sample out of frame; the housing border covers them.
+float rn = 0.25 * Aspect * Aspect;
+float n = 1.0 + K1 * Amount * rn + K2 * Amount * rn * rn;
 c *= f / n;
 
 // Radial chromatic aberration: this channel is sampled at a slightly different radius.

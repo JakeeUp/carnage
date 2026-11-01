@@ -1018,7 +1018,7 @@ void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
 	// Centered so it clears the vitals / ammo panels in the bottom corners.
 	const float Battery = FMath::Clamp(BodycamBatteryStart - BodycamBatteryDrainPerMinute * (Now / 60.0f), 1.0f, 100.0f);
 	const bool bBatteryLow = Battery < 20.0f;
-	const FString Percent = FString::Printf(TEXT("%d%%"), FMath::FloorToInt(Battery));
+	const FString Percent = FString::Printf(TEXT("%d%%"), FMath::CeilToInt(Battery));
 
 	const FVector2f IdSize = FPainter::Measure(BodycamDeviceId, Font);
 	const FVector2f BattSize(FMath::RoundToFloat(LineH * 1.5f), FMath::RoundToFloat(LineH * 0.6f));
