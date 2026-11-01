@@ -83,6 +83,8 @@ void AShooterWeapon::EndPlay(EEndPlayReason::Type EndPlayReason)
 	{
 		World->GetTimerManager().ClearTimer(RefireTimer);
 		World->GetTimerManager().ClearTimer(ReloadTimer);
+		World->GetTimerManager().ClearTimer(DrawTimer);
+		World->GetTimerManager().ClearTimer(SlideLockTimer);
 	}
 
 	if (AActor* OwnerActor = GetOwner())
@@ -99,14 +101,50 @@ void AShooterWeapon::OnOwnerDestroyed(AActor* DestroyedActor)
 void AShooterWeapon::ActivateWeapon()
 {
 	bShotBuffered = false;
+	bIsHolstering = false;
 
 	SetActorHiddenInGame(false);
 
 	if (WeaponOwner)
 	{
+		// Activation sets the holder's anim class, so the draw montage must play after it.
 		WeaponOwner->OnWeaponActivated(this);
 		WeaponOwner->UpdateReserveHUD(ReserveAmmo);
+
+		const float DrawLength = WeaponOwner->PlayEquipMontage(DrawMontage);
+		const float Lockout = DrawLockoutTime >= 0.0f ? DrawLockoutTime : DrawLength;
+		if (Lockout > UE_KINDA_SMALL_NUMBER)
+		{
+			bIsDrawing = true;
+			GetWorld()->GetTimerManager().SetTimer(DrawTimer, this, &AShooterWeapon::FinishDraw, Lockout, false);
+		}
+		else
+		{
+			FinishDraw();
+		}
 	}
+}
+
+void AShooterWeapon::FinishDraw()
+{
+	bIsDrawing = false;
+}
+
+float AShooterWeapon::BeginHolster()
+{
+	StopFiring();
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RefireTimer);
+		World->GetTimerManager().ClearTimer(ReloadTimer);
+		World->GetTimerManager().ClearTimer(DrawTimer);
+	}
+	bShotBuffered = false;
+	bIsReloading = false;
+	bIsDrawing = false;
+	bIsHolstering = true;
+
+	return WeaponOwner ? WeaponOwner->PlayEquipMontage(HolsterMontage) : 0.0f;
 }
 
 void AShooterWeapon::DeactivateWeapon()
@@ -116,9 +154,13 @@ void AShooterWeapon::DeactivateWeapon()
 	{
 		World->GetTimerManager().ClearTimer(RefireTimer);
 		World->GetTimerManager().ClearTimer(ReloadTimer);
+		World->GetTimerManager().ClearTimer(DrawTimer);
 	}
+	ClearSlideLock();
 	bShotBuffered = false;
 	bIsReloading = false;
+	bIsDrawing = false;
+	bIsHolstering = false;
 
 	SetActorHiddenInGame(true);
 
@@ -130,7 +172,7 @@ void AShooterWeapon::DeactivateWeapon()
 
 void AShooterWeapon::StartFiring()
 {
-	if (bIsReloading)
+	if (bIsReloading || bIsDrawing || bIsHolstering)
 	{
 		return;
 	}
@@ -180,7 +222,7 @@ void AShooterWeapon::StopFiring()
 
 bool AShooterWeapon::CanReload() const
 {
-	return !bIsReloading && CurrentBullets < MagazineSize && ReserveAmmo > 0;
+	return !bIsReloading && !bIsDrawing && !bIsHolstering && CurrentBullets < MagazineSize && ReserveAmmo > 0;
 }
 
 void AShooterWeapon::StartReload()
@@ -194,17 +236,86 @@ void AShooterWeapon::StartReload()
 	StopFiring();
 	bShotBuffered = false;
 
-	WeaponOwner->PlayReloadMontage(ReloadMontage);
+	// The empty variants start from the slide-locked pose (the weapon's dry reload has no blend-in).
+	const bool bEmpty = CurrentBullets <= 0;
+	UAnimMontage* ArmsMontage = (bEmpty && ReloadMontage_Empty) ? ReloadMontage_Empty.Get() : ReloadMontage;
+	UAnimMontage* WeaponMontage = (bEmpty && WeaponReloadMontage_Empty) ? WeaponReloadMontage_Empty.Get() : WeaponReloadMontage;
 
-	if (WeaponReloadMontage && FirstPersonMesh)
+	// The reload montage takes over the weapon slot; drop the held slide lock.
+	ClearSlideLock();
+
+	WeaponOwner->PlayReloadMontage(ArmsMontage);
+
+	float WeaponMontageLength = 0.0f;
+	if (WeaponMontage && FirstPersonMesh)
 	{
 		if (UAnimInstance* WeaponAnim = FirstPersonMesh->GetAnimInstance())
 		{
-			WeaponAnim->Montage_Play(WeaponReloadMontage, 1.0f);
+			WeaponMontageLength = WeaponAnim->Montage_Play(WeaponMontage, 1.0f);
 		}
 	}
 
-	GetWorld()->GetTimerManager().SetTimer(ReloadTimer, this, &AShooterWeapon::FinishReload, ReloadDuration, false);
+	ActiveReloadDuration = ReloadDuration;
+	if (bSyncReloadToMontage)
+	{
+		// The holder may not report what it played, so use the arms asset's own length.
+		const float ArmsLength = ArmsMontage ? ArmsMontage->GetPlayLength() / FMath::Max(ArmsMontage->RateScale, UE_KINDA_SMALL_NUMBER) : 0.0f;
+		const float MontageLength = FMath::Max(ArmsLength, WeaponMontageLength);
+		if (MontageLength > UE_KINDA_SMALL_NUMBER)
+		{
+			ActiveReloadDuration = MontageLength;
+		}
+	}
+
+	GetWorld()->GetTimerManager().SetTimer(ReloadTimer, this, &AShooterWeapon::FinishReload, ActiveReloadDuration, false);
+}
+
+bool AShooterWeapon::PlaySlideLock()
+{
+	UAnimInstance* WeaponAnim = (SlideLockSequence && FirstPersonMesh) ? FirstPersonMesh->GetAnimInstance() : nullptr;
+	if (!WeaponAnim)
+	{
+		return false;
+	}
+
+	UAnimMontage* Montage = WeaponAnim->PlaySlotAnimationAsDynamicMontage(SlideLockSequence, SlideLockSlotName, 0.0f, 0.0f, 1.0f);
+	if (!Montage)
+	{
+		return false;
+	}
+
+	SlideLockMontage = Montage;
+
+	// Pause just short of the end so the montage never auto-completes and blends the slide home.
+	constexpr float HoldBeforeEnd = 0.02f;
+	const float HoldTime = FMath::Max(Montage->GetPlayLength() - HoldBeforeEnd, UE_KINDA_SMALL_NUMBER);
+	GetWorld()->GetTimerManager().SetTimer(SlideLockTimer, this, &AShooterWeapon::HoldSlideLock, HoldTime, false);
+	return true;
+}
+
+void AShooterWeapon::HoldSlideLock()
+{
+	UAnimInstance* WeaponAnim = FirstPersonMesh ? FirstPersonMesh->GetAnimInstance() : nullptr;
+	if (WeaponAnim && SlideLockMontage.IsValid())
+	{
+		WeaponAnim->Montage_Pause(SlideLockMontage.Get());
+	}
+}
+
+void AShooterWeapon::ClearSlideLock()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SlideLockTimer);
+	}
+
+	UAnimInstance* WeaponAnim = FirstPersonMesh ? FirstPersonMesh->GetAnimInstance() : nullptr;
+	// Montage_IsActive (not IsPlaying): the held lock is paused.
+	if (WeaponAnim && SlideLockMontage.IsValid() && WeaponAnim->Montage_IsActive(SlideLockMontage.Get()))
+	{
+		WeaponAnim->Montage_Stop(0.0f, SlideLockMontage.Get());
+	}
+	SlideLockMontage.Reset();
 }
 
 void AShooterWeapon::FinishReload()
@@ -287,7 +398,9 @@ void AShooterWeapon::FireShot()
 	}
 	WeaponOwner->PlayFiringMontage(ArmsMontage);
 
-	if (WeaponFiringMontage && FirstPersonMesh)
+	// Last round: the slide goes back and locks instead of cycling.
+	const bool bLastRound = CurrentBullets <= 1;
+	if (!(bLastRound && PlaySlideLock()) && WeaponFiringMontage && FirstPersonMesh)
 	{
 		if (UAnimInstance* WeaponAnim = FirstPersonMesh->GetAnimInstance())
 		{

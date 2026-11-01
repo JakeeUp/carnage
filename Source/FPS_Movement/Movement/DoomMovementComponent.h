@@ -49,9 +49,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Sprint", meta=(ClampMin=0, Units="cm/s"))
 	float SprintSpeed = 1200.0f;
 
+	/**
+	 * Forward-only sprint (Titanfall 2 / BO3): sprint speed applies only while the move direction
+	 * (input, or velocity when there is no input) is within this many degrees of the facing.
+	 * Strafes and backpedals stay at walk speed, so the speed-driven arms blendspace plays walk.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Doom|Sprint", meta=(ClampMin=0, ClampMax=180, Units="Degrees"))
+	float SprintMaxAngle = 50.0f;
+
 	void StartSprint();
 	void StopSprint();
 
+	/** Sprint is held (the player's intent), regardless of direction or ground state. */
+	UFUNCTION(BlueprintPure, Category="Doom|Sprint")
+	bool WantsToSprint() const { return bWantsToSprint; }
+
+	/** True when the current move direction is within SprintMaxAngle of the facing (or there is no move direction). */
+	UFUNCTION(BlueprintPure, Category="Doom|Sprint")
+	bool IsSprintDirectionAllowed() const;
+
+	/** Actually sprinting: held, grounded, standing, moving forward within SprintMaxAngle and above half walk speed. */
 	UFUNCTION(BlueprintPure, Category="Doom|Sprint")
 	bool IsSprinting() const;
 

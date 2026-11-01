@@ -349,24 +349,39 @@ void UWeaponRecoilComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		}
 	}
 
+	// Velocity in the character's facing frame: what direction-aware motion keys off.
+	const bool bGroundedMove = Movement && Movement->IsMovingOnGround() && !(DoomMovement && DoomMovement->IsSliding());
+	const FVector WorldVelocity = Character ? Character->GetVelocity() : FVector::ZeroVector;
+	const float ForwardSpeed = Character ? static_cast<float>(FVector::DotProduct(WorldVelocity, Character->GetActorForwardVector())) : 0.0f;
+	const float LateralSpeed = Character ? static_cast<float>(FVector::DotProduct(WorldVelocity, Character->GetActorRightVector())) : 0.0f;
+	const float GroundSpeed = static_cast<float>(WorldVelocity.Size2D());
+	const float LateralRatio = FMath::Clamp(LateralSpeed / BobReferenceSpeed, -1.0f, 1.0f);
+	// 0 = moving straight forward/back, 1 = pure strafe.
+	const float StrafeFraction = GroundSpeed > 1.0f ? FMath::Clamp(FMath::Abs(LateralSpeed) / GroundSpeed, 0.0f, 1.0f) : 0.0f;
+
 	// ── 4. Velocity sway ────────────────────────────────────────────────
 	FVector TargetMoveSway = FVector::ZeroVector;
 	if (bEnableSway && Character)
 	{
-		const FVector Velocity = Character->GetVelocity();
-		const float LateralSpeed = FVector::DotProduct(Velocity, Character->GetActorRightVector());
-
-		TargetMoveSway.Y = FMath::Clamp(-LateralSpeed / BobReferenceSpeed, -1.0f, 1.0f) * MoveSwayLateral;
-		TargetMoveSway.Z = FMath::Clamp(-Velocity.Z * MoveSwayVertical, -MaxMoveSwayVertical, MaxMoveSwayVertical);
+		TargetMoveSway.Y = -LateralRatio * MoveSwayLateral;
+		TargetMoveSway.Z = FMath::Clamp(static_cast<float>(-WorldVelocity.Z) * MoveSwayVertical, -MaxMoveSwayVertical, MaxMoveSwayVertical);
 	}
 	MoveSwayOffset = FMath::VInterpTo(MoveSwayOffset, TargetMoveSway, DeltaTime, SwayInterpSpeed);
 
+	// ── 4b. Directional pose: strafe lean (any time) and backpedal pull-in (grounded) ──
+	{
+		const float StrafeTarget = bEnableSway ? LateralRatio : 0.0f;
+		const float BackpedalTarget = (bEnableSway && bGroundedMove) ? FMath::Clamp(-ForwardSpeed / BobReferenceSpeed, 0.0f, 1.0f) : 0.0f;
+		StrafeLean = FMath::FInterpTo(StrafeLean, StrafeTarget, DeltaTime, DirectionalInterpSpeed);
+		BackpedalAlpha = FMath::FInterpTo(BackpedalAlpha, BackpedalTarget, DeltaTime, DirectionalInterpSpeed);
+	}
+
 	// ── 5. Figure-8 bob (vertical at twice the lateral frequency) ───────
+	// Strafing shifts the lateral sway onto the step cadence and damps it (side steps shove the
+	// gun once per step rather than the slow forward-walk figure-8), and damps the roll.
 	FVector BobLocation = FVector::ZeroVector;
 	float BobRoll = 0.0f;
 	{
-		const bool bGroundedMove = Movement && Movement->IsMovingOnGround() && !(DoomMovement && DoomMovement->IsSliding());
-		const float GroundSpeed = Movement ? static_cast<float>(Movement->Velocity.Size2D()) : 0.0f;
 		const float TargetWeight = (bEnableBob && bGroundedMove) ? FMath::Clamp(GroundSpeed / BobReferenceSpeed, 0.0f, 1.5f) : 0.0f;
 
 		BobWeight = FMath::FInterpTo(BobWeight, TargetWeight, DeltaTime, 8.0f);
@@ -382,14 +397,28 @@ void UWeaponRecoilComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		const float VerticalPhase = UE_TWO_PI * BobTime / BobVerticalPeriod;
 		const float LateralPhase = UE_TWO_PI * BobTime / BobLateralPeriod;
 
-		BobLocation.Y = FMath::Sin(LateralPhase) * BobLateralAmplitude * BobWeight;
+		const float CadenceBlend = StrafeFraction * BobStrafeCadenceBlend;
+		const float LateralWave = FMath::Lerp(FMath::Sin(LateralPhase), FMath::Sin(VerticalPhase), CadenceBlend);
+		const float LateralAmp = BobLateralAmplitude * FMath::Lerp(1.0f, BobStrafeLateralScale, StrafeFraction);
+		const float RollAmp = BobRollAmplitude * FMath::Lerp(1.0f, BobStrafeRollScale, StrafeFraction);
+
+		BobLocation.Y = LateralWave * LateralAmp * BobWeight;
 		BobLocation.Z = FMath::Sin(VerticalPhase) * BobVerticalAmplitude * BobWeight;
-		BobRoll = FMath::Sin(LateralPhase) * BobRollAmplitude * BobWeight;
+		BobRoll = LateralWave * RollAmp * BobWeight;
 	}
 
 	// ── 6. Sprint / slide pose blends ───────────────────────────────────
 	{
-		const float SprintTarget = (DoomMovement && DoomMovement->IsSprinting()) ? 1.0f : 0.0f;
+		// Forward-only: the sprint pose scales with forward speed, so strafing or backpedalling
+		// with sprint held never shows it (the movement component also caps those at walk speed).
+		float SprintTarget = 0.0f;
+		if (DoomMovement && DoomMovement->IsSprinting() && DoomMovement->SprintSpeed > 0.0f)
+		{
+			const float ForwardRatio = ForwardSpeed / DoomMovement->SprintSpeed;
+			SprintTarget = FMath::GetMappedRangeValueClamped(
+				FVector2f(SprintPoseForwardRatioRange.X, FMath::Max(SprintPoseForwardRatioRange.Y, SprintPoseForwardRatioRange.X + 0.01f)),
+				FVector2f(0.0f, 1.0f), ForwardRatio);
+		}
 		const float SlideTarget = (DoomMovement && DoomMovement->IsSliding()) ? 1.0f : 0.0f;
 		ViewSpring::CriticalStep(SprintPoseAlpha, SprintPoseVelocity, SprintTarget, PoseSmoothingTime, DeltaTime);
 		ViewSpring::CriticalStep(SlidePoseAlpha, SlidePoseVelocity, SlideTarget, PoseSmoothingTime, DeltaTime);
@@ -418,12 +447,15 @@ void UWeaponRecoilComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	const float MoveScale = FMath::Lerp(1.0f, ADSMoveSwayScale, Alpha) * VisualScale;
 	const float PoseScale = 1.0f - Alpha;
 
+	const FVector StrafeLeanLocation(0.0f, 0.0f, -FMath::Abs(StrafeLean) * StrafeLeanDrop);
+	const FRotator StrafeLeanRotation(0.0f, -StrafeLean * StrafeYawAngle, StrafeLean * StrafeRollAngle);
+
 	FVector OffsetLocation =
 		  FVector(0.0f, LookLag.Yaw, LookLag.Pitch) * LookSwayPositionScale * SwayScale
 		+ BobLocation * SwayScale
-		+ (MoveSwayOffset + FVector(0.0f, 0.0f, LandingOffset)) * MoveScale
+		+ (MoveSwayOffset + FVector(0.0f, 0.0f, LandingOffset) + StrafeLeanLocation) * MoveScale
 		+ KickLocation
-		+ (SprintPoseLocation * SprintPoseAlpha + SlidePoseLocation * SlidePoseAlpha) * PoseScale;
+		+ (SprintPoseLocation * SprintPoseAlpha + SlidePoseLocation * SlidePoseAlpha + BackpedalPoseLocation * BackpedalAlpha) * PoseScale;
 	// First-person rendering already prevents wall clipping; the pullback is a hip-fire nicety only.
 	// In ADS it would drag the sights into the eye, so it fades out with the ADS alpha.
 	OffsetLocation.X -= CurrentWallPullback * (1.0f - Alpha);
@@ -431,8 +463,9 @@ void UWeaponRecoilComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	const FRotator OffsetRotation =
 		  FRotator(LookLag.Pitch, LookLag.Yaw, LookLag.Yaw * 0.35f) * (LookSwayScale * SwayScale)
 		+ FRotator(0.0f, 0.0f, BobRoll * SwayScale)
+		+ StrafeLeanRotation * MoveScale
 		+ AnglesToRotator(KickAngles)
-		+ (SprintPoseRotation * SprintPoseAlpha + SlidePoseRotation * SlidePoseAlpha) * PoseScale;
+		+ (SprintPoseRotation * SprintPoseAlpha + SlidePoseRotation * SlidePoseAlpha + BackpedalPoseRotation * BackpedalAlpha) * PoseScale;
 
 	const FTransform Offset(OffsetRotation, OffsetLocation);
 

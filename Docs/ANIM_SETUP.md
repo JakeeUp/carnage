@@ -18,17 +18,25 @@ input key and a montage.
 4. Open **`BP_ShooterChar`** → **Class Defaults** → search **"Reload"** → set **Reload Action = IA_Reload**.
    Compile + Save.
 
-### b) Reload montage
-1. Open **`BP_Pistol`** (`FirstPerson/Blueprints/Weapons/`) → **Class Defaults**.
-2. **Animation → Reload Montage** → pick a montage built for the **first-person arms** skeleton — e.g.
-   **`AM_Pistol_Reload_Montage`** (`FirstPersonPistolAnimations/Animations/`).
-3. *(Optional)* **Weapon Reload Montage** → `AM_Weapon_Pistol_Reload_Montage` (plays the mag-swap on the
-   gun mesh itself).
-4. **Ammo → Reload Duration** → set to roughly the montage length (≈1.5–2.0s) so ammo refills when the
-   animation finishes. Compile + Save.
+### b) Reload, draw, holster and slide-lock animations
+Run the wiring script once (editor closed or BP_Pistol not open). It is idempotent and prints every
+property it changes:
 
-Test: fire to empty (auto-reloads) or press **R**. You can't fire mid-reload; ammo pulls from the reserve.
-Tunables on the weapon: **Reserve Ammo** (90), **Auto Reload On Empty** (true), **Reload Duration**.
+```
+UnrealEditor-Cmd.exe FPS_Movement.uproject -run=pythonscript -script="<repo>/Tools/Python/wire_pistol_animations.py" -EnablePlugins=PythonScriptPlugin -unattended -nop4 -nosplash -NullRHI
+```
+
+It sets on **`BP_Pistol`**: Weapon Reload Montage, Weapon Reload Montage Empty, Draw Montage, Holster Montage
+and Slide Lock Sequence (see the audit table below). **Reload Montage** (arms) is already set.
+
+With **Animation → Reload → Sync Reload To Montage** on (default), the reload finishes when the longest reload
+montage ends (2.0 s normal, 2.083 s from empty), not after **Reload Duration**, which is only the fallback when
+no montage is set.
+
+Test: fire to empty (slide locks back, auto-reloads with the dry reload) or press **R** with rounds left
+(normal reload). You can't fire mid-reload or during the 0.42 s draw; ammo pulls from the reserve.
+Tunables on the weapon: **Reserve Ammo** (90), **Auto Reload On Empty** (true), **Reload Duration**,
+**Draw Lockout Time** (-1 = draw montage length).
 
 ---
 
@@ -77,6 +85,47 @@ Almost always blend timing. Three usual culprits:
    whole body. In the AnimGraph, the montage **Slot** node should sit on a **Layered Blend Per Bone** that
    blends from `spine_01` (or your arms root) up, so locomotion keeps driving the lower body. For FP arms-only
    this is usually already fine.
+
+---
+
+## 5. Animation audit (First Person Pistol Animations pack)
+
+Arms montages target `SK_Mannequin_Arms_Skeleton`; weapon montages target `SK_Pistol`. All pack montages use
+`DefaultSlot`. `ABP_Pistol` (the gun's AnimBP) has a `DefaultSlot` node, so weapon montages and dynamic slot
+animations play on it.
+
+| Asset | Length | Used by | Where |
+|---|---|---|---|
+| `ABS_Movement` (AS_Pistol_Idle / AS_Pistol_Walk / AS_Pistol_Sprint by Speed) | — | arms locomotion | `ABP_ShooterArms` |
+| `AS_Pistol_Jump_Start` / `_Loop` / `_Landed` | — | arms in-air states | `ABP_ShooterArms` |
+| `AM_Pistol_Fire_Montage` | 0.50 s | arms fire | `BP_Pistol.FiringMontage` |
+| `AM_Pistol_ADS_Fire_Montage` | — | arms fire while aimed | `BP_Pistol.FiringMontage_ADS` |
+| `AM_Pistol_Reload_Montage` | 2.00 s | arms reload (normal and empty) | `BP_Pistol.ReloadMontage` |
+| `AM_Pistol_Draw_Montage` | 0.42 s | arms, on equip; blocks fire/reload | `BP_Pistol.DrawMontage` (script) |
+| `AM_Pistol_Holster_Montage` | 0.50 s | arms, before a weapon switch | `BP_Pistol.HolsterMontage` (script) |
+| `AM_Weapon_Pistol_Fire_Montage` | 0.50 s | gun slide cycle | `BP_Pistol.WeaponFiringMontage` |
+| `AM_Weapon_Pistol_Reload_Montage` | 2.00 s | gun mag swap, rounds left | `BP_Pistol.WeaponReloadMontage` (script; was empty) |
+| `AM_Weapon_Pistol_Reload_Dry_Montage` | 2.08 s | gun mag swap from empty; starts slide-locked, releases slide | `BP_Pistol.WeaponReloadMontage_Empty` (script) |
+| `AS_Weapon_Pistol_Fire_Dry_Montage` (AnimSequence) | 0.50 s | last round: slide goes back and is held on the final frame until the reload | `BP_Pistol.SlideLockSequence` (script), played on `DefaultSlot` |
+
+Verified from the bone tracks: `glock_slide` sits at x = -1.05 at rest, ends `AS_Weapon_Pistol_Fire_Dry_Montage`
+at x = -4.63 (locked back), and `AS_Weapon_Pistol_Reload_Dry` starts at -4.63 and ends at -1.05.
+
+**Intentionally retired**
+- `AS_Pistol_ADS_In` / `AS_Pistol_ADS_Out` / `AS_Pistol_ADS_Pose` and the ADS states in `ABP_ShooterArms`
+  (still referenced by the AnimBP but never entered): ADS is procedural (`UWeaponRecoilComponent`, see
+  [Systems/ADS.md](Systems/ADS.md)).
+- The pack's camera shakes (`CS_*`) other than `CS_Sprint`, the demo character, input and `WBP_Ammo`.
+- `ReloadMontage_Empty` (arms) is left unset: the pack has no separate arms dry reload.
+
+**Direction (no directional animations in the pack)**
+- Sprint is forward-only (`UDoomMovementComponent::SprintMaxAngle`, 50 deg): strafes and backpedals stay at
+  walk speed, so the speed-driven `ABS_Movement` plays walk instead of sprint.
+- Direction comes from `UWeaponRecoilComponent`: strafe roll/yaw/lean from lateral velocity, a backpedal
+  pull-in, a sprint pose scaled by forward speed only, and a bob whose lateral sway moves to the step cadence
+  while strafing (`Recoil|Directional` and `Recoil|Bob` tunables).
+- `CS_Sprint` is a 1 s one-shot wave-oscillator shake (blend-out 1 s, single instance), not a loop, so it never
+  needs stopping; it now plays only when the sprint press is within the forward cone.
 
 ---
 

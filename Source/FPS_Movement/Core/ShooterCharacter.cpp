@@ -386,24 +386,44 @@ void AShooterCharacter::DoReload()
 
 void AShooterCharacter::DoSwitchWeapon()
 {
-	if (OwnedWeapons.Num() > 1 && CurrentWeapon && !IsDead())
+	if (OwnedWeapons.Num() > 1 && CurrentWeapon && !IsDead() && !GetWorldTimerManager().IsTimerActive(WeaponSwitchTimer))
 	{
-		CurrentWeapon->DeactivateWeapon();
-
-		int32 WeaponIndex = OwnedWeapons.Find(CurrentWeapon);
-
-		if (WeaponIndex == OwnedWeapons.Num() - 1)
+		const float HolsterTime = CurrentWeapon->BeginHolster();
+		if (HolsterTime > UE_KINDA_SMALL_NUMBER)
 		{
-			WeaponIndex = 0;
+			GetWorldTimerManager().SetTimer(WeaponSwitchTimer, this, &AShooterCharacter::FinishWeaponSwitch, HolsterTime, false);
 		}
-		else {
-			++WeaponIndex;
+		else
+		{
+			FinishWeaponSwitch();
 		}
-
-		CurrentWeapon = OwnedWeapons[WeaponIndex];
-
-		CurrentWeapon->ActivateWeapon();
 	}
+}
+
+void AShooterCharacter::FinishWeaponSwitch()
+{
+	GetWorldTimerManager().ClearTimer(WeaponSwitchTimer);
+
+	if (OwnedWeapons.Num() <= 1 || !CurrentWeapon || IsDead())
+	{
+		return;
+	}
+
+	CurrentWeapon->DeactivateWeapon();
+
+	int32 WeaponIndex = OwnedWeapons.Find(CurrentWeapon);
+
+	if (WeaponIndex == OwnedWeapons.Num() - 1)
+	{
+		WeaponIndex = 0;
+	}
+	else {
+		++WeaponIndex;
+	}
+
+	CurrentWeapon = OwnedWeapons[WeaponIndex];
+
+	CurrentWeapon->ActivateWeapon();
 }
 
 void AShooterCharacter::AttachWeaponMeshes(AShooterWeapon* Weapon)
@@ -475,6 +495,18 @@ void AShooterCharacter::PlayReloadMontage(UAnimMontage* Montage)
 	}
 }
 
+float AShooterCharacter::PlayEquipMontage(UAnimMontage* Montage)
+{
+	if (!Montage)
+	{
+		return 0.0f;
+	}
+
+	USkeletalMeshComponent* FPMesh = GetFirstPersonMesh();
+	UAnimInstance* FPAnim = FPMesh ? FPMesh->GetAnimInstance() : nullptr;
+	return FPAnim ? FPAnim->Montage_Play(Montage, 1.0f) : 0.0f;
+}
+
 void AShooterCharacter::UpdateReserveHUD(int32 ReserveAmmo)
 {
 	OnReserveAmmoUpdated.Broadcast(ReserveAmmo);
@@ -541,6 +573,9 @@ bool AShooterCharacter::AddWeaponClass(const TSubclassOf<AShooterWeapon>& Weapon
 		{
 			OwnedWeapons.Add(AddedWeapon);
 
+			// A pickup during a holster replaces the pending swap.
+			GetWorldTimerManager().ClearTimer(WeaponSwitchTimer);
+
 			if (CurrentWeapon)
 			{
 				CurrentWeapon->DeactivateWeapon();
@@ -592,7 +627,13 @@ void AShooterCharacter::DoStartSprint()
 		}
 
 		DoomMovement->StartSprint();
-		PlayCameraShake(SprintCameraShake);
+
+		// CS_Sprint is a 1 s one-shot lurch (wave oscillator, blend-out = duration), not a loop, so
+		// it never needs stopping. Sprint is forward-only, so skip it when the press won't sprint.
+		if (DoomMovement->IsSprintDirectionAllowed())
+		{
+			PlayCameraShake(SprintCameraShake);
+		}
 	}
 }
 
