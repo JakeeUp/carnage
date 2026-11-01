@@ -24,6 +24,7 @@
 #include "Camera/CameraComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 
 AShooterWeapon::AShooterWeapon()
 {
@@ -359,10 +360,7 @@ void AShooterWeapon::FireHitscan(const FVector& TargetLocation)
 	FVector TraceStart, AimDir;
 	GetShotRay(TargetLocation, TraceStart, AimDir);
 
-	if (AimVariance > 0.0f)
-	{
-		AimDir = FMath::VRandCone(AimDir, FMath::DegreesToRadians(AimVariance));
-	}
+	AimDir = ApplyAimVariance(AimDir);
 
 	const FVector TraceEnd = TraceStart + AimDir * HitscanRange;
 
@@ -435,7 +433,9 @@ void AShooterWeapon::GetShotRay(const FVector& TargetLocation, FVector& OutStart
 		return;
 	}
 
-	OutStart = FirstPersonMesh->GetSocketLocation(MuzzleSocketName);
+	// Everyone else (NPCs) shoots from the muzzle that is actually rendered: the third-person mesh.
+	// The first-person mesh of a non-local owner is hidden and may not even sit on a hand socket.
+	OutStart = GetVisibleMuzzleLocation();
 	OutDirection = (TargetLocation - OutStart).GetSafeNormal(UE_SMALL_NUMBER, GetActorForwardVector());
 }
 
@@ -588,17 +588,42 @@ void AShooterWeapon::PlayFireSound() const
 
 FTransform AShooterWeapon::CalculateProjectileSpawnTransform(const FVector& TargetLocation) const
 {
-	const FVector MuzzleLoc = FirstPersonMesh->GetSocketLocation(MuzzleSocketName);
+	// Local players keep spawning from the first-person muzzle; NPCs spawn from the visible third-person muzzle.
+	const FVector MuzzleLoc = GetLocalViewer() ? FirstPersonMesh->GetSocketLocation(MuzzleSocketName) : GetVisibleMuzzleLocation();
 
 	const FVector SpawnLoc = MuzzleLoc + ((TargetLocation - MuzzleLoc).GetSafeNormal() * MuzzleOffset);
 
-	FVector AimDir = (TargetLocation - SpawnLoc).GetSafeNormal();
-	if (AimVariance > 0.0f)
-	{
-		AimDir = FMath::VRandCone(AimDir, FMath::DegreesToRadians(AimVariance));
-	}
+	const FVector AimDir = ApplyAimVariance((TargetLocation - SpawnLoc).GetSafeNormal());
 
 	return FTransform(AimDir.Rotation(), SpawnLoc, FVector::OneVector);
+}
+
+bool AShooterWeapon::ShouldApplyAimVariance() const
+{
+	return AimVariance > 0.0f && !(WeaponOwner && WeaponOwner->SuppliesAimSpread());
+}
+
+FVector AShooterWeapon::ApplyAimVariance(const FVector& AimDir) const
+{
+	return ShouldApplyAimVariance() ? FMath::VRandCone(AimDir, FMath::DegreesToRadians(AimVariance)) : AimDir;
+}
+
+float AShooterWeapon::GetProjectileLaunchSpeed() const
+{
+	if (FireMode != EShooterWeaponFireMode::Projectile || !ProjectileClass)
+	{
+		return 0.0f;
+	}
+
+	// Blueprint overrides of the native movement component live on the class default object.
+	const AShooterProjectile* ProjectileCDO = ProjectileClass->GetDefaultObject<AShooterProjectile>();
+	const UProjectileMovementComponent* Movement = ProjectileCDO ? ProjectileCDO->FindComponentByClass<UProjectileMovementComponent>() : nullptr;
+	if (!Movement)
+	{
+		return 0.0f;
+	}
+
+	return Movement->InitialSpeed > 0.0f ? Movement->InitialSpeed : Movement->MaxSpeed;
 }
 
 const TSubclassOf<UAnimInstance>& AShooterWeapon::GetFirstPersonAnimInstanceClass() const
