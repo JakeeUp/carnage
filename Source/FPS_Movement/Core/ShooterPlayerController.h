@@ -49,6 +49,7 @@ protected:
 	UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
 	bool bForceTouchControls = false;
 
+	/** Fallback respawn class. The game mode's default pawn wins when it is a shooter character. */
 	UPROPERTY(EditAnywhere, Category="Shooter|Respawn")
 	TSubclassOf<AShooterCharacter> CharacterClass;
 

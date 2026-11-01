@@ -7,6 +7,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerStart.h"
 #include "ShooterCharacter.h"
+#include "GameFramework/GameModeBase.h"
 #include "ShooterBulletCounterUI.h"
 #include "ShooterHUDWidget.h"
 #include "FPS_Movement.h"
@@ -166,7 +167,19 @@ void AShooterPlayerController::OnPawnDestroyed(AActor* DestroyedActor)
 
 		const FTransform SpawnTransform = RandomPlayerStart->GetActorTransform();
 
-		if (AShooterCharacter* RespawnedCharacter = GetWorld()->SpawnActor<AShooterCharacter>(CharacterClass, SpawnTransform))
+		// Respawn as the game mode's pawn so it always matches the character the level started with
+		// (CharacterClass previously pointed at the template character, which has no weapon).
+		TSubclassOf<AShooterCharacter> RespawnClass = CharacterClass;
+		if (AGameModeBase* GameMode = GetWorld()->GetAuthGameMode())
+		{
+			UClass* DefaultPawn = GameMode->GetDefaultPawnClassForController(this);
+			if (DefaultPawn && DefaultPawn->IsChildOf(AShooterCharacter::StaticClass()))
+			{
+				RespawnClass = DefaultPawn;
+			}
+		}
+
+		if (AShooterCharacter* RespawnedCharacter = GetWorld()->SpawnActor<AShooterCharacter>(RespawnClass, SpawnTransform))
 		{
 			Possess(RespawnedCharacter);
 		}
