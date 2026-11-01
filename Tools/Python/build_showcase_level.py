@@ -144,9 +144,9 @@ F = "Showcase/B_Slide"
 slope("Slide_UpRamp", F, 1500, 0, 2300, 250, -600, 600)
 block("Slide_Crest", F, 2300, 2700, -600, 600, 0, 250, MAT_STEP)
 slope("Slide_DownRamp", F, 2700, 250, 3700, 0, -600, 600)
-block("Slide_GatePostL", F, 3950, 4050, -320, -300, 0, 110, MAT_ACCENT)
-block("Slide_GatePostR", F, 3950, 4050, 300, 320, 0, 110, MAT_ACCENT)
-block("Slide_GateBeam", F, 3950, 4050, -320, 320, 110, 150, MAT_ACCENT)
+block("Slide_GatePostL", F, 3950, 4050, -340, -300, 0, 160, MAT_ACCENT)
+block("Slide_GatePostR", F, 3950, 4050, 300, 340, 0, 160, MAT_ACCENT)
+# No overhead beam yet: the slide does not lower the capsule, so a low gate would be a wall.
 sign("Sign_Slide", "SPRINT + CTRL on the downhill: slopes add speed", (1450, 0, 190), size=40)
 
 # C  Mantle steps
