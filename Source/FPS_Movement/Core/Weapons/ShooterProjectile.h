@@ -57,6 +57,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Projectile|Hit")
 	bool bDamageOwner = false;
 
+	/** Spawn procedural sparks/dust/bullet hole on a non-explosive hit (UCarnageWeaponFXSubsystem). */
+	UPROPERTY(EditAnywhere, Category="Projectile|FX")
+	bool bSpawnImpactFX = true;
+
 	UPROPERTY(EditAnywhere, Category="Projectile|Explosion")
 	bool bExplodeOnHit = false;
 
