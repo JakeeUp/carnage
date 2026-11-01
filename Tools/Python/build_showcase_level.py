@@ -214,6 +214,13 @@ for k, (x, y, yaw) in enumerate(((1500, 6600, -45), (6600, 6600, -135), (6600, 2
         log.append("spawner props: %s" % e)
 sign("Sign_ArenaInside", "ARENA: slide into enemies to launch them, keep them airborne", (cx, AY0 + 150, 450), yaw=-90, size=45, color=ORANGE)
 
+# I  Aim trainer (to the right of the bunny-hop strip). Targets face -X; the player stands 15 m back.
+F = "Showcase/I_AimTrainer"
+trainer = eas.spawn_actor_from_class(unreal.CarnageAimTrainer, unreal.Vector(12500, 4500, 0), unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0))
+_finish(trainer, "AimTrainer", F)
+sign("Sign_AimTrainer", "AIM TRAINER  >>>", (11600, 650, 220), yaw=180, size=60, color=ORANGE)
+sign("Sign_AimTrainerHow", "AIM TRAINER: shoot a mode button to start", (10950, 4500, 330), yaw=180, size=40)
+
 # Level rules: the showcase opens in bodycam mode (B toggles it).
 rules = eas.spawn_actor_from_class(unreal.CarnageLevelRules, unreal.Vector(-400, 0, 300))
 rules.set_editor_property("bStartWithBodycam", True)
