@@ -94,8 +94,13 @@ Default bindings from the Enhanced Input mapping contexts (`Content/Input/IMC_De
 | Dash | Q |
 | Fire | Left Mouse Button |
 | Aim down sights | Right Mouse Button (hold) |
+| Toggle bodycam | B |
 | Reload | R |
 | Swap weapon | TODO: confirm key (`IA_SwapWeapon`, expected mouse wheel) |
+
+### Mouse sensitivity
+
+Sensitivity uses Valorant units, so an existing Valorant setting carries over exactly (same cm/360). Set it in **Project Settings > Game > Carnage Input** or at runtime with `carnage.Sensitivity 0.105`. `carnage.SensInfo` prints degrees per count and cm/360 for the configured DPI. Mouse input is raw (no smoothing or acceleration).
 
 ## Build
 
