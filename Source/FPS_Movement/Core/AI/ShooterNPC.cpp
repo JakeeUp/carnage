@@ -419,6 +419,15 @@ FVector AShooterNPC::GetWeaponTargetLocation()
 		float Radius = 0.0f, HalfHeight = 0.0f;
 		AimActor->GetSimpleCollisionCylinder(Radius, HalfHeight);
 		DrawDebugSphere(World, AimActor->GetActorLocation() + FVector(0.0f, 0.0f, HalfHeight * AimHeightFraction), 8.0f, 8, FColor::Yellow, false, DrawTime);
+
+		// would this ray hit the target where it stands now (exact for still targets and hitscan)
+		FCollisionQueryParams HitParams(SCENE_QUERY_STAT(ShooterNPCAimDebug), false, this);
+		HitParams.AddIgnoredActor(Weapon);
+		FHitResult DebugHit;
+		World->LineTraceSingleByChannel(DebugHit, ShotOrigin, ShotOrigin + ShotDir * (AimDistance + 500.0f), ECC_Weapon, HitParams);
+		UE_LOG(LogFPS_Movement, Log, TEXT("NPCAim %s: dist %.0f spread %.2f lead %.0f los %d raytarget %d"),
+			*GetName(), AimDistance, SpreadHalfAngle, FVector::Dist(AimPoint, AimActor->GetActorLocation() + FVector(0.0f, 0.0f, HalfHeight * AimHeightFraction)),
+			bHasLineOfSight ? 1 : 0, DebugHit.GetActor() == AimActor ? 1 : 0);
 	}
 #endif
 
