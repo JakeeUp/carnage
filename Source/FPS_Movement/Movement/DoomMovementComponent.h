@@ -257,6 +257,12 @@ public:
 	UFUNCTION(BlueprintPure, Category="Doom|Speed")
 	float GetExternalSpeedScale() const { return ExternalSpeedScale; }
 
+	/** Grounded walk/sprint speed multiplier driven by the aim-down-sights blend (1 = hip). */
+	void SetADSSpeedScale(float NewScale);
+
+	UFUNCTION(BlueprintPure, Category="Doom|Speed")
+	float GetADSSpeedScale() const { return ADSSpeedScale; }
+
 protected:
 
 	virtual void BeginPlay() override;
@@ -276,6 +282,8 @@ private:
 	static constexpr uint8 CMOVE_WallRun = 0;
 
 	float ExternalSpeedScale = 1.0f;
+
+	float ADSSpeedScale = 1.0f;
 
 	bool bWantsToSprint = false;
 
