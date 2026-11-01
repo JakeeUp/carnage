@@ -4,6 +4,8 @@
 #include "ShooterWeapon.h"
 #include "DoomMovementComponent.h"
 #include "DoomCameraEffectsComponent.h"
+#include "BodycamComponent.h"
+#include "InputAction.h"
 #include "WeaponRecoilComponent.h"
 #include "StyleMeterComponent.h"
 #include "CarnageAbilitySystemComponent.h"
@@ -42,6 +44,9 @@ AShooterCharacter::AShooterCharacter(const FObjectInitializer& ObjectInitializer
 	CameraEffects = CreateDefaultSubobject<UDoomCameraEffectsComponent>(TEXT("Camera Effects"));
 	RecoilComponent = CreateDefaultSubobject<UWeaponRecoilComponent>(TEXT("Recoil"));
 	StyleMeter = CreateDefaultSubobject<UStyleMeterComponent>(TEXT("Style Meter"));
+	Bodycam = CreateDefaultSubobject<UBodycamComponent>(TEXT("Bodycam"));
+
+	ToggleBodycamAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/Actions/IA_ToggleBodycam.IA_ToggleBodycam")));
 
 	AbilitySystem = CreateDefaultSubobject<UCarnageAbilitySystemComponent>(TEXT("AbilitySystem"));
 	AttributeSet = CreateDefaultSubobject<UCarnageAttributeSet>(TEXT("AttributeSet"));
@@ -187,6 +192,12 @@ void AShooterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		if (ReloadAction)
 		{
 			EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AShooterCharacter::DoReload);
+		}
+
+		// Soft reference with a C++ default, so the character Blueprint doesn't need editing.
+		if (const UInputAction* ToggleAction = ToggleBodycamAction.LoadSynchronous())
+		{
+			EnhancedInputComponent->BindAction(ToggleAction, ETriggerEvent::Started, this, &AShooterCharacter::DoToggleBodycam);
 		}
 	}
 
@@ -579,6 +590,14 @@ void AShooterCharacter::DoStopADS()
 {
 	bADSInputHeld = false;
 	RefreshAimState();
+}
+
+void AShooterCharacter::DoToggleBodycam()
+{
+	if (Bodycam)
+	{
+		Bodycam->ToggleBodycam();
+	}
 }
 
 // ─── ADS ────────────────────────────────────────────────────────────────────
