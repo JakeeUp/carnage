@@ -50,17 +50,55 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category ="Weapons")
 	FName ThirdPersonWeaponSocket = FName("HandGrip_R");
 
-	UPROPERTY(EditAnywhere, Category="Aim")
+	// ── Aim model ───────────────────────────────────────────────────────
+	// Each shot aims at the target's upper chest, leads its velocity, then picks a random
+	// direction inside a spread cone. The cone starts wide when the NPC (re)acquires the
+	// target, settles to BaseSpreadHalfAngle, and widens with target speed so moving pays.
+	// The weapon's own AimVariance is not applied on top (SuppliesAimSpread).
+
+	/** Trace length for shots fired without a target. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=100, Units="cm"))
 	float AimRange = 10000.0f;
 
-	UPROPERTY(EditAnywhere, Category="Aim")
-	float AimVarianceHalfAngle = 10.0f;
+	/** Aim height above the target's capsule centre, as a fraction of the capsule half height (0.45 = upper chest). */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=-1, ClampMax=1))
+	float AimHeightFraction = 0.45f;
 
-	UPROPERTY(EditAnywhere, Category="Aim")
-	float MinAimOffsetZ = -35.0f;
+	/** Spread cone half-angle once the NPC has settled on a still target. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=0, ClampMax=30, Units="Degrees"))
+	float BaseSpreadHalfAngle = 2.0f;
 
-	UPROPERTY(EditAnywhere, Category="Aim")
-	float MaxAimOffsetZ = -60.0f;
+	/** Spread cone half-angle right after the target is acquired or re-acquired. Blends to BaseSpreadHalfAngle over SettleTime. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=0, ClampMax=45, Units="Degrees"))
+	float AcquireSpreadHalfAngle = 5.0f;
+
+	/** Seconds of continuous tracking needed to tighten from AcquireSpreadHalfAngle to BaseSpreadHalfAngle. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=0, ClampMax=5, Units="s"))
+	float SettleTime = 0.8f;
+
+	/** Tracking counts as lost (and settling restarts) after this long without a shot or with the shot line blocked. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=0, ClampMax=5, Units="s"))
+	float TrackingLostTime = 1.0f;
+
+	/** Extra spread half-angle when the target moves at MovingSpreadReferenceSpeed. Scales linearly with target speed. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=0, ClampMax=20, Units="Degrees"))
+	float MovingSpreadHalfAngle = 1.5f;
+
+	/** Target speed at which the full MovingSpreadHalfAngle is added. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=1, Units="cm/s"))
+	float MovingSpreadReferenceSpeed = 1200.0f;
+
+	/** Upper limit of the speed-based extra spread. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=0, ClampMax=20, Units="Degrees"))
+	float MaxMovingSpreadHalfAngle = 3.0f;
+
+	/** Fraction of the ideal projectile lead applied (1 = perfect lead on a constant-velocity target, 0 = aim at the current position). Below 1 so strafing still dodges. Hitscan weapons never lead. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=0, ClampMax=1.5))
+	float LeadAccuracy = 0.75f;
+
+	/** Longest projectile flight time the NPC will lead for. */
+	UPROPERTY(EditAnywhere, Category="AI|Aim", meta=(ClampMin=0, ClampMax=5, Units="s"))
+	float MaxLeadTime = 1.0f;
 
 	TWeakObjectPtr<AActor> CurrentAimTarget;
 
@@ -170,6 +208,8 @@ public:
 
 	virtual FVector GetWeaponTargetLocation() override;
 
+	virtual bool SuppliesAimSpread() const override { return true; }
+
 	virtual bool AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass) override;
 
 	virtual void OnWeaponActivated(AShooterWeapon* Weapon) override;
@@ -207,6 +247,12 @@ protected:
 	/** Picks the bone whose subtree blends into physics for a hit on HitBone, or NAME_None if none is usable. */
 	FName ChooseFlinchBone(FName HitBone) const;
 
+	/** Current spread half-angle in degrees for a shot at AimActor, and updates the settle tracking state. */
+	float UpdateAimSpread(const AActor* AimActor, bool bHasLineOfSight);
+
+	/** Upper-chest aim point of AimActor, led by its velocity for projectile weapons fired from ShotOrigin. */
+	FVector GetPredictedAimPoint(const AActor* AimActor, const FVector& ShotOrigin) const;
+
 private:
 
 	FLastHitData LastHit;
@@ -227,6 +273,15 @@ private:
 	bool bStaggered = false;
 	float PreStaggerWalkSpeed = 0.0f;
 	FTimerHandle StaggerTimer;
+
+	/** Target the settle timer is tracking (weak: the target may be destroyed between shots). */
+	TWeakObjectPtr<const AActor> SettleTarget;
+
+	/** World time continuous tracking of SettleTarget began. */
+	float TrackingStartTime = 0.0f;
+
+	/** World time of the last shot that had a clear line to SettleTarget. */
+	float LastTrackedShotTime = -1.0f;
 
 protected:
 

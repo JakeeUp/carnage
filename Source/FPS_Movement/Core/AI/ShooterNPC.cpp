@@ -15,6 +15,16 @@
 #include "ShooterDamageUtils.h"
 #include "Engine/DamageEvents.h"
 #include "PhysicsEngine/BodyInstance.h"
+#include "DrawDebugHelpers.h"
+#include "HAL/IConsoleManager.h"
+
+#if !UE_BUILD_SHIPPING
+static TAutoConsoleVariable<int32> CVarDrawNPCAim(
+	TEXT("carnage.Debug.DrawNPCAim"),
+	0,
+	TEXT("1 = per NPC shot, draw the shot ray (red), the spread cone around the aim direction, the target's chest point (yellow) and the led aim point (green)."),
+	ECVF_Cheat);
+#endif
 
 AShooterNPC::AShooterNPC()
 {
@@ -360,35 +370,115 @@ void AShooterNPC::UpdateWeaponHUD(int32 CurrentAmmo, int32 MagazineSize)
 
 FVector AShooterNPC::GetWeaponTargetLocation()
 {
-	const FVector AimSource = GetFirstPersonCameraComponent()->GetComponentLocation();
+	const UCameraComponent* EyeCamera = GetFirstPersonCameraComponent();
+	const FVector EyeLocation = EyeCamera->GetComponentLocation();
 
-	FVector AimDir, AimTarget = FVector::ZeroVector;
-
-	if (const AActor* AimActor = CurrentAimTarget.Get())
+	const AActor* AimActor = CurrentAimTarget.Get();
+	if (!AimActor)
 	{
-		AimTarget = AimActor->GetActorLocation();
+		// no target: fire roughly where the NPC is looking
+		const FVector AimDir = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(EyeCamera->GetForwardVector(), AcquireSpreadHalfAngle);
+		const FVector TraceEnd = EyeLocation + AimDir * AimRange;
 
-		AimTarget.Z += FMath::RandRange(MinAimOffsetZ, MaxAimOffsetZ);
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ShooterNPCAim), false, this);
+		QueryParams.AddIgnoredActor(Weapon);
 
-		AimDir = (AimTarget - AimSource).GetSafeNormal();
-		AimDir = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(AimDir, AimVarianceHalfAngle);
-
-	} else {
-
-		AimDir = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(GetFirstPersonCameraComponent()->GetForwardVector(), AimVarianceHalfAngle);
-
+		FHitResult OutHit;
+		GetWorld()->LineTraceSingleByChannel(OutHit, EyeLocation, TraceEnd, ECC_Weapon, QueryParams);
+		return OutHit.bBlockingHit ? OutHit.ImpactPoint : OutHit.TraceEnd;
 	}
 
-	AimTarget = AimSource + (AimDir * AimRange);
+	// Shots leave the visible muzzle, so aim from there: the returned point then lies exactly on the shot line.
+	const FVector ShotOrigin = Weapon ? Weapon->GetMuzzleWorldLocation() : EyeLocation;
+	const FVector AimPoint = GetPredictedAimPoint(AimActor, ShotOrigin);
 
-	FHitResult OutHit;
+	// line of sight from the eyes to the target itself (not the led point) drives the settle timer
+	FCollisionQueryParams SightParams(SCENE_QUERY_STAT(ShooterNPCAimSight), false, this);
+	SightParams.AddIgnoredActor(Weapon);
+	SightParams.AddIgnoredActor(AimActor);
+	const bool bHasLineOfSight = !GetWorld()->LineTraceTestByChannel(EyeLocation, AimActor->GetActorLocation(), ECC_Visibility, SightParams);
 
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ShooterNPCAim), false, this);
-	QueryParams.AddIgnoredActor(Weapon);
+	const float SpreadHalfAngle = UpdateAimSpread(AimActor, bHasLineOfSight);
 
-	GetWorld()->LineTraceSingleByChannel(OutHit, AimSource, AimTarget, ECC_Weapon, QueryParams);
+	const FVector ToAim = AimPoint - ShotOrigin;
+	const float AimDistance = FMath::Max(ToAim.Size(), 100.0f);
+	const FVector IdealDir = ToAim.GetSafeNormal(UE_SMALL_NUMBER, GetActorForwardVector());
+	const FVector ShotDir = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(IdealDir, SpreadHalfAngle);
+	const FVector ShotTarget = ShotOrigin + ShotDir * AimDistance;
 
-	return OutHit.bBlockingHit ? OutHit.ImpactPoint : OutHit.TraceEnd;
+#if !UE_BUILD_SHIPPING
+	if (CVarDrawNPCAim.GetValueOnGameThread() != 0)
+	{
+		constexpr float DrawTime = 1.0f;
+		const UWorld* World = GetWorld();
+		const float ConeRad = FMath::DegreesToRadians(SpreadHalfAngle);
+		DrawDebugLine(World, ShotOrigin, ShotOrigin + ShotDir * (AimDistance + 500.0f), FColor::Red, false, DrawTime, 0, 1.0f);
+		DrawDebugCone(World, ShotOrigin, IdealDir, AimDistance, ConeRad, ConeRad, 16, FColor::Orange, false, DrawTime);
+		DrawDebugSphere(World, AimPoint, 8.0f, 8, FColor::Green, false, DrawTime);
+
+		float Radius = 0.0f, HalfHeight = 0.0f;
+		AimActor->GetSimpleCollisionCylinder(Radius, HalfHeight);
+		DrawDebugSphere(World, AimActor->GetActorLocation() + FVector(0.0f, 0.0f, HalfHeight * AimHeightFraction), 8.0f, 8, FColor::Yellow, false, DrawTime);
+	}
+#endif
+
+	return ShotTarget;
+}
+
+float AShooterNPC::UpdateAimSpread(const AActor* AimActor, bool bHasLineOfSight)
+{
+	const float Now = GetWorld()->GetTimeSeconds();
+
+	float SettleAlpha = 0.0f;
+	if (!bHasLineOfSight)
+	{
+		// blind shot: widest spread, and the next clear shot starts settling from scratch
+		SettleTarget.Reset();
+		LastTrackedShotTime = -1.0f;
+	}
+	else
+	{
+		const bool bReacquired = SettleTarget.Get() != AimActor || LastTrackedShotTime < 0.0f || (Now - LastTrackedShotTime) > TrackingLostTime;
+		if (bReacquired)
+		{
+			SettleTarget = AimActor;
+			TrackingStartTime = Now;
+		}
+		LastTrackedShotTime = Now;
+
+		SettleAlpha = SettleTime > 0.0f ? FMath::Clamp((Now - TrackingStartTime) / SettleTime, 0.0f, 1.0f) : 1.0f;
+	}
+
+	const float SettledSpread = FMath::Lerp(AcquireSpreadHalfAngle, BaseSpreadHalfAngle, SettleAlpha);
+
+	const float TargetSpeed = AimActor->GetVelocity().Size();
+	const float MovingSpread = FMath::Min(MovingSpreadHalfAngle * TargetSpeed / FMath::Max(MovingSpreadReferenceSpeed, 1.0f), MaxMovingSpreadHalfAngle);
+
+	return SettledSpread + MovingSpread;
+}
+
+FVector AShooterNPC::GetPredictedAimPoint(const AActor* AimActor, const FVector& ShotOrigin) const
+{
+	// upper chest: capsule centre plus a fraction of the half height (crouching shrinks it with the capsule)
+	float Radius = 0.0f, HalfHeight = 0.0f;
+	AimActor->GetSimpleCollisionCylinder(Radius, HalfHeight);
+	FVector AimPoint = AimActor->GetActorLocation() + FVector(0.0f, 0.0f, HalfHeight * AimHeightFraction);
+
+	const float ProjectileSpeed = Weapon ? Weapon->GetProjectileLaunchSpeed() : 0.0f;
+	if (ProjectileSpeed <= 0.0f || LeadAccuracy <= 0.0f)
+	{
+		// hitscan (or unknown projectile): no lead
+		return AimPoint;
+	}
+
+	// flight time to the current point, refined once against the predicted point
+	const FVector TargetVelocity = AimActor->GetVelocity();
+	float FlightTime = FVector::Dist(ShotOrigin, AimPoint) / ProjectileSpeed;
+	FlightTime = FVector::Dist(ShotOrigin, AimPoint + TargetVelocity * FlightTime) / ProjectileSpeed;
+	FlightTime = FMath::Min(FlightTime, MaxLeadTime);
+
+	AimPoint += TargetVelocity * (FlightTime * LeadAccuracy);
+	return AimPoint;
 }
 
 bool AShooterNPC::AddWeaponClass(const TSubclassOf<AShooterWeapon>& InWeaponClass)
