@@ -214,6 +214,11 @@ for k, (x, y, yaw) in enumerate(((1500, 6600, -45), (6600, 6600, -135), (6600, 2
         log.append("spawner props: %s" % e)
 sign("Sign_ArenaInside", "ARENA: slide into enemies to launch them, keep them airborne", (cx, AY0 + 150, 450), yaw=-90, size=45, color=ORANGE)
 
+# Level rules: the showcase opens in bodycam mode (B toggles it).
+rules = eas.spawn_actor_from_class(unreal.CarnageLevelRules, unreal.Vector(-400, 0, 300))
+rules.set_editor_property("bStartWithBodycam", True)
+_finish(rules, "LevelRules", "Showcase/Rules")
+
 # Navigation for the NPCs: one bounds volume over everything, generated at runtime.
 nav = eas.spawn_actor_from_class(unreal.NavMeshBoundsVolume, unreal.Vector(10000, 3000, 500))
 nav.set_actor_scale3d(unreal.Vector(11300 / 100.0, 4700 / 100.0, 800 / 100.0))
