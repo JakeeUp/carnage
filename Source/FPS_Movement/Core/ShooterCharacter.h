@@ -226,8 +226,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void DoStopFiring();
 
+	/** Holsters the current weapon (its HolsterMontage, if any) and then equips the next owned weapon. */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void DoSwitchWeapon();
+
+private:
+
+	/** Second half of DoSwitchWeapon, after the holster montage. */
+	void FinishWeaponSwitch();
+
+	/** Pending swap while the holster montage plays. */
+	FTimerHandle WeaponSwitchTimer;
+
+public:
 
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void DoReload();
@@ -241,6 +252,9 @@ public:
 	virtual void PlayFiringMontage(UAnimMontage* Montage) override;
 
 	virtual void PlayReloadMontage(UAnimMontage* Montage) override;
+
+	/** Draw / holster: first-person arms only (the pack montages target the arms skeleton). */
+	virtual float PlayEquipMontage(UAnimMontage* Montage) override;
 
 	virtual void AddWeaponRecoil(const FWeaponRecoilParams& Recoil) override;
 

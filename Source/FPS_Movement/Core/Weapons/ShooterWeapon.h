@@ -13,6 +13,7 @@ class IShooterWeaponHolder;
 class AShooterProjectile;
 class USkeletalMeshComponent;
 class UAnimMontage;
+class UAnimSequenceBase;
 class UAnimInstance;
 class UNiagaraSystem;
 class USoundBase;
@@ -73,6 +74,44 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category="Animation")
 	UAnimMontage* FiringMontage_ADS;
+
+	/** Arms reload used when reloading from an empty magazine. Falls back to ReloadMontage when unset. */
+	UPROPERTY(EditAnywhere, Category="Animation|Reload")
+	TObjectPtr<UAnimMontage> ReloadMontage_Empty;
+
+	/** Weapon-mesh reload used from an empty magazine (slide starts locked back). Falls back to WeaponReloadMontage. */
+	UPROPERTY(EditAnywhere, Category="Animation|Reload")
+	TObjectPtr<UAnimMontage> WeaponReloadMontage_Empty;
+
+	/**
+	 * When a reload montage is set, the reload completes when the longest played reload montage
+	 * ends instead of after ReloadDuration, so ammo refills when the magazine visibly seats.
+	 */
+	UPROPERTY(EditAnywhere, Category="Animation|Reload")
+	bool bSyncReloadToMontage = true;
+
+	/** Arms montage played when this weapon is equipped. Firing and reloading are blocked while it plays. */
+	UPROPERTY(EditAnywhere, Category="Animation|Equip")
+	TObjectPtr<UAnimMontage> DrawMontage;
+
+	/** Arms montage played before switching away from this weapon; the swap happens when it ends. */
+	UPROPERTY(EditAnywhere, Category="Animation|Equip")
+	TObjectPtr<UAnimMontage> HolsterMontage;
+
+	/** Fire/reload lockout after equipping. Negative = the played DrawMontage's length (0 when none played). */
+	UPROPERTY(EditAnywhere, Category="Animation|Equip", meta=(ClampMin=-1, ClampMax=3, Units="s"))
+	float DrawLockoutTime = -1.0f;
+
+	/**
+	 * Weapon-mesh sequence played on the last round instead of WeaponFiringMontage: the slide goes
+	 * back and stays locked (held on its final frame) until the reload. Played as a dynamic montage
+	 * on SlideLockSlotName, so the weapon's AnimBP must have that slot (ABP_Pistol has DefaultSlot).
+	 */
+	UPROPERTY(EditAnywhere, Category="Animation|SlideLock")
+	TObjectPtr<UAnimSequenceBase> SlideLockSequence;
+
+	UPROPERTY(EditAnywhere, Category="Animation|SlideLock")
+	FName SlideLockSlotName = FName("DefaultSlot");
 
 	UPROPERTY(EditAnywhere, Category="Animation")
 	TSubclassOf<UAnimInstance> FirstPersonAnimInstanceClass;
@@ -185,9 +224,25 @@ protected:
 
 	bool bIsReloading = false;
 
+	/** Draw montage playing after equip: no firing or reloading. */
+	bool bIsDrawing = false;
+
+	/** Holster montage playing before a weapon switch: no firing or reloading. */
+	bool bIsHolstering = false;
+
+	/** Duration of the reload in progress (ReloadDuration, or the montage length when synced). */
+	float ActiveReloadDuration = 1.5f;
+
 	FTimerHandle RefireTimer;
 
 	FTimerHandle ReloadTimer;
+
+	FTimerHandle DrawTimer;
+
+	FTimerHandle SlideLockTimer;
+
+	/** Dynamic montage holding the slide lock, paused on its last frame. */
+	TWeakObjectPtr<UAnimMontage> SlideLockMontage;
 
 	TWeakObjectPtr<APawn> PawnOwner;
 
@@ -231,15 +286,36 @@ public:
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	bool IsReloading() const { return bIsReloading; }
 
+	/** Duration of the current reload, or of the next one when not reloading. */
 	UFUNCTION(BlueprintPure, Category="Weapon")
-	float GetReloadDuration() const { return ReloadDuration; }
+	float GetReloadDuration() const { return bIsReloading ? ActiveReloadDuration : ReloadDuration; }
 
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	bool CanReload() const;
 
+	/** True while the draw (equip) montage blocks firing. */
+	UFUNCTION(BlueprintPure, Category="Weapon")
+	bool IsDrawing() const { return bIsDrawing; }
+
+	/**
+	 * Starts putting the weapon away: cancels firing/reload, blocks input and plays HolsterMontage.
+	 * Returns how long the holster takes (0 when no montage played); the holder swaps after that.
+	 */
+	float BeginHolster();
+
 protected:
 
 	void FinishReload();
+
+	void FinishDraw();
+
+	/** Pauses the slide-lock montage on its final frame so the slide stays back. */
+	void HoldSlideLock();
+
+	/** Plays the last-round slide lock on the weapon mesh. Returns false when unavailable. */
+	bool PlaySlideLock();
+
+	void ClearSlideLock();
 
 	virtual void Fire();
 

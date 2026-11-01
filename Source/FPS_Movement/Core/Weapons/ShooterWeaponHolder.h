@@ -28,6 +28,12 @@ public:
 
 	virtual void PlayReloadMontage(UAnimMontage* Montage) {}
 
+	/**
+	 * Plays an arms montage that is neither fire nor reload (weapon draw / holster).
+	 * Returns its play length in seconds, or 0 when nothing played (holders without arms).
+	 */
+	virtual float PlayEquipMontage(UAnimMontage* Montage) { return 0.0f; }
+
 	virtual void AddWeaponRecoil(const FWeaponRecoilParams& Recoil) = 0;
 
 	virtual void UpdateWeaponHUD(int32 CurrentAmmo, int32 MagazineSize) = 0;
