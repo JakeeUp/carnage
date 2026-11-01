@@ -44,6 +44,9 @@ public:
 
 	virtual FVector GetWeaponTargetLocation() = 0;
 
+	/** True if GetWeaponTargetLocation() already includes aim spread, so the weapon must not add its AimVariance on top. */
+	virtual bool SuppliesAimSpread() const { return false; }
+
 	/** Returns true if the holder accepted the weapon (false if already owned, dead, or unsupported). */
 	virtual bool AddWeaponClass(const TSubclassOf<AShooterWeapon>& WeaponClass) = 0;
 

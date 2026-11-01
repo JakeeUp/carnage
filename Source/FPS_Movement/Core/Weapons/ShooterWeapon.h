@@ -329,6 +329,12 @@ protected:
 
 	FTransform CalculateProjectileSpawnTransform(const FVector& TargetLocation) const;
 
+	/** True when AimVariance should be applied: the holder does not already supply a spread-adjusted target. */
+	bool ShouldApplyAimVariance() const;
+
+	/** Returns AimDir randomized inside the AimVariance cone, or AimDir unchanged when ShouldApplyAimVariance() is false. */
+	FVector ApplyAimVariance(const FVector& AimDir) const;
+
 	// ── FX helpers ──────────────────────────────────────────────────────
 
 	/** Owning local player controller with a camera manager, or null (NPCs, remote pawns). */
@@ -370,6 +376,12 @@ public:
 	const TSubclassOf<UAnimInstance>& GetThirdPersonAnimInstanceClass() const;
 
 	int32 GetMagazineSize() const { return MagazineSize; };
+
+	/** Where shots from a non-local owner (NPC) originate: the visible third-person muzzle. */
+	FVector GetMuzzleWorldLocation() const { return GetVisibleMuzzleLocation(); }
+
+	/** Launch speed of ProjectileClass read from its ProjectileMovementComponent defaults; 0 for hitscan or unknown. */
+	float GetProjectileLaunchSpeed() const;
 
 	int32 GetBulletCount() const { return CurrentBullets; }
 
