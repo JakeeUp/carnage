@@ -1,9 +1,13 @@
 """
-Generates the bodycam lens post-process material used by UBodycamComponent.
+Generates the assets used by UBodycamComponent.
 
 Run headless:
   UnrealEditor-Cmd.exe <Project>.uproject -run=pythonscript -script="<this file>" \
       -EnablePlugins=PythonScriptPlugin -unattended -nop4 -nosplash -NullRHI
+
+Creates / updates:
+  /Game/Input/Actions/IA_ToggleBodycam - boolean input action (created if missing)
+  /Game/Input/IMC_Default              - adds the B key -> IA_ToggleBodycam mapping (idempotent)
 
 Creates (overwrites) under /Game/Carnage/Bodycam/:
   M_BodycamLens - post-process material (after tonemapping):
@@ -12,7 +16,10 @@ Creates (overwrites) under /Game/Carnage/Bodycam/:
       * rolling-shutter skew (horizontal shear by scanline, driven by yaw rate from C++),
       * dark rounded-rect border that also hides out-of-frame samples in the corners.
 
-Scalar parameters (driven per frame from C++ through a UMaterialInstanceDynamic):
+Scalar parameters (driven per frame from C++ through a UMaterialInstanceDynamic). The base
+material's defaults for Distortion / ChromaticAberration / Border / RollingShutter are 0, the
+neutral state: when the blendable is faded in with a weight below 1, the engine lerps the
+instance's parameters from the base material's values, so the effect fades in smoothly.
   Distortion           0..1  multiplier on K1/K2
   ChromaticAberration  0..1  multiplier on CAStrength
   Border               0..1  rounded-rect border opacity
@@ -137,9 +144,9 @@ def make_lens():
     screen = expr(mat, unreal.MaterialExpressionScreenPosition, -1600, 0)
     view = expr(mat, unreal.MaterialExpressionViewSize, -1600, 150)
 
-    p_dist = scalar(mat, "Distortion", 1.0, -1600, 300)
-    p_ca = scalar(mat, "ChromaticAberration", 1.0, -1600, 400)
-    p_border = scalar(mat, "Border", 1.0, -1600, 500)
+    p_dist = scalar(mat, "Distortion", 0.0, -1600, 300)
+    p_ca = scalar(mat, "ChromaticAberration", 0.0, -1600, 400)
+    p_border = scalar(mat, "Border", 0.0, -1600, 500)
     p_skew = scalar(mat, "RollingShutter", 0.0, -1600, 600)
     p_k1 = scalar(mat, "K1", 0.22, -1600, 700)
     p_k2 = scalar(mat, "K2", 0.05, -1600, 800)
@@ -195,6 +202,47 @@ def make_lens():
     log("saved " + mat.get_path_name())
 
 
+INPUT_ACTION_FOLDER = "/Game/Input/Actions"
+INPUT_ACTION_NAME = "IA_ToggleBodycam"
+IMC_PATH = "/Game/Input/IMC_Default"
+TOGGLE_KEY = "B"
+
+
+def make_input():
+    ia_path = INPUT_ACTION_FOLDER + "/" + INPUT_ACTION_NAME
+    if assets.does_asset_exist(ia_path):
+        action = unreal.load_asset(ia_path)
+    else:
+        factory_cls = getattr(unreal, "InputAction_Factory", None) or getattr(unreal, "InputActionFactory")
+        action = tools.create_asset(INPUT_ACTION_NAME, INPUT_ACTION_FOLDER, unreal.InputAction, factory_cls())
+        if action is None:
+            raise RuntimeError("Failed to create " + ia_path)
+    action.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
+    action.set_editor_property("action_description", "Toggle the bodycam camera look")
+    assets.save_loaded_asset(action)
+    log("saved " + action.get_path_name())
+
+    imc = unreal.load_asset(IMC_PATH)
+    if imc is None:
+        raise RuntimeError("Missing " + IMC_PATH)
+    already = False
+    for m in imc.get_editor_property("default_key_mappings").get_editor_property("mappings"):
+        if m.get_editor_property("action") == action:
+            already = True
+    if not already:
+        key = unreal.Key()
+        key.set_editor_property("key_name", TOGGLE_KEY)
+        imc.modify()
+        imc.map_key(action, key)
+        # map_key does not dirty the package, so force the save.
+        if not assets.save_asset(IMC_PATH, only_if_is_dirty=False):
+            raise RuntimeError("Failed to save " + IMC_PATH)
+        log("mapped %s -> %s in %s" % (TOGGLE_KEY, INPUT_ACTION_NAME, IMC_PATH))
+    else:
+        log("%s already mapped in %s" % (INPUT_ACTION_NAME, IMC_PATH))
+
+
 if not assets.does_directory_exist(FOLDER):
     assets.make_directory(FOLDER)
 make_lens()
+make_input()
