@@ -119,9 +119,21 @@ Enhanced Input (mapping contexts loaded by AShooterPlayerController)
 
 All weapon damage goes through `ShooterDamage::ApplyHit`, in `Core/Weapons/ShooterDamageUtils`. Projectiles and hitscan shots both use this path.
 
+- **Trace channel.** Hitscan and aim traces use the `Weapon` channel (`ECC_Weapon` =
+  `ECC_GameTraceChannel2`), not Visibility. The engine's Pawn and CharacterMesh profiles ignore
+  Visibility, so shots used to pass through characters. Weapon blocks by default; Trigger,
+  OverlapAll(Dynamic), InvisibleWall(Dynamic) and Projectile opt out in `DefaultEngine.ini`.
+- **Per-bone hits.** Characters whose mesh has a physics asset ignore Weapon on the capsule, so
+  traces land on the bodies and `BoneName` is valid (`ShooterDamage::SetupPerBoneWeaponHits`).
+  Without a physics asset the capsule stays the hit volume.
 - **Headshots.** Resolved by bone or by capsule height.
-- **Kills.** Detected through the `Dead` actor tag.
+- **Point damage.** `ApplyHit` sends `FShooterPointDamageEvent` (an `FPointDamageEvent` plus the
+  headshot flag and weapon impulse) so receivers get bone, location and direction.
+- **Shootables.** Actors implementing `IShooterShootable` are offered the hit first.
+- **Kills.** Detected through the `Dead` actor tag. Corpses still get the physics push but no
+  damage or hitmarker. AI rounds don't damage other AI.
 - **Feedback.** Instigators receive hit feedback through `IShooterHitFeedbackReceiver`.
+- **Hit reactions.** See [Docs/Systems/HitReactions.md](Docs/Systems/HitReactions.md).
 
 Damage is applied differently to the two character types:
 
