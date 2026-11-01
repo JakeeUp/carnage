@@ -17,7 +17,8 @@ class AShooterWeapon;
  * mesh's relative transform. Every frame (after animation) it:
  *  1. drains aim recoil into the control rotation and recovers it,
  *  2. steps the kick / view-punch / landing springs,
- *  3. builds a procedural offset (look lag, figure-8 bob, move sway, kick, landing, wall pull-back),
+ *  3. builds a procedural offset (look lag, direction-aware figure-8 bob, move sway, strafe lean,
+ *     backpedal pull-in, forward-only sprint pose, kick, landing, wall pull-back),
  *  4. builds the hip transform (authored relative transform * offset) and the ADS transform
  *     (sight^-1 * offset * eye target) and blends them with the owner's ADS alpha.
  * See Docs/Systems/ADS.md.
@@ -153,6 +154,46 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Bob", meta=(ClampMin=1, Units="cm/s"))
 	float BobReferenceSpeed = 800.0f;
 
+	/** Lateral bob amplitude multiplier when moving purely sideways (blended by how sideways the move is). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Bob", meta=(ClampMin=0, ClampMax=3))
+	float BobStrafeLateralScale = 0.6f;
+
+	/** Bob roll multiplier when moving purely sideways. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Bob", meta=(ClampMin=0, ClampMax=3))
+	float BobStrafeRollScale = 0.4f;
+
+	/**
+	 * How far a pure strafe moves the lateral bob onto the step cadence (the vertical period): side
+	 * steps shove the gun once per step instead of the slow forward-walk figure-8. 0 = same as forward.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Bob", meta=(ClampMin=0, ClampMax=1))
+	float BobStrafeCadenceBlend = 0.75f;
+
+	// ── Directional move pose (strafe lean / backpedal) ─────────────────
+
+	/** Roll (degrees) at BobReferenceSpeed of lateral velocity; the gun banks into the strafe. Negative flips the bank. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Directional", meta=(ClampMin=-20, ClampMax=20, Units="Degrees"))
+	float StrafeRollAngle = 3.5f;
+
+	/** Yaw (degrees) at BobReferenceSpeed of lateral velocity; the muzzle trails the strafe. Negative leads instead. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Directional", meta=(ClampMin=-10, ClampMax=10, Units="Degrees"))
+	float StrafeYawAngle = 1.2f;
+
+	/** Downward lean (cm) at full lateral speed, on top of the lateral move sway. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Directional", meta=(ClampMin=0, ClampMax=5, Units="cm"))
+	float StrafeLeanDrop = 0.4f;
+
+	/** Pose offset at BobReferenceSpeed of backward velocity (grounded): pulled in towards the body and lowered. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Directional")
+	FVector BackpedalPoseLocation = FVector(-1.8f, 0.0f, -1.2f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Directional")
+	FRotator BackpedalPoseRotation = FRotator(-2.5f, 0.0f, 0.0f);
+
+	/** Smoothing rate (1/s) for the strafe lean and backpedal pose. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Directional", meta=(ClampMin=1, ClampMax=30))
+	float DirectionalInterpSpeed = 9.0f;
+
 	// ── Landing inertia ─────────────────────────────────────────────────
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Landing")
@@ -183,6 +224,14 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Pose")
 	FVector SprintPoseLocation = FVector(-4.0f, 2.0f, -3.0f);
+
+	/**
+	 * Forward speed, as a fraction of the movement component's SprintSpeed, over which the sprint
+	 * pose ramps in (X = starts, Y = full). Only forward velocity counts, so the pose never shows
+	 * while strafing or backpedalling.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Pose")
+	FVector2D SprintPoseForwardRatioRange = FVector2D(0.55f, 0.9f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil|Pose")
 	FRotator SlidePoseRotation = FRotator(-3.0f, -4.0f, -18.0f);
@@ -292,6 +341,10 @@ private:
 
 	// Move sway
 	FVector MoveSwayOffset = FVector::ZeroVector;
+
+	// Directional pose: signed lateral ratio (-1..1, + = moving right) and backpedal ratio (0..1)
+	float StrafeLean = 0.0f;
+	float BackpedalAlpha = 0.0f;
 
 	// Bob
 	float BobTime = 0.0f;
