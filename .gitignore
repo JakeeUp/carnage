@@ -33,5 +33,5 @@ _Removed_Backup/
 /Content/Characters/
 /Content/Weapons/
 
-# Claude Code local worktrees/settings
+# Local tooling worktrees/settings
 .claude/
