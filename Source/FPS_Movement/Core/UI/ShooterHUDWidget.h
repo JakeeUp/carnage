@@ -315,11 +315,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Rank", meta=(ClampMin=0, ClampMax=1))
 	float RankIdleAlpha = 0.35f;
 
-	// ── Bodycam overlay (shown while UBodycamComponent is on) ───────────
-
-	/** Opacity of the vitals / ammo / rank panels at full bodycam blend. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=1))
-	float BodycamPanelOpacity = 0.65f;
+	// ── Bodycam OSD (shown while UBodycamComponent is on) ───────────────
+	//
+	// In bodycam mode the game HUD is replaced by a burned-in camera OSD: small monospace text
+	// fields in the corners instead of panels. Both layouts are always evaluated and crossfaded
+	// by the bodycam blend alpha, so toggling morphs between them.
 
 	/** Keep a small center dot in bodycam mode (the crosshair ticks are always hidden). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
@@ -333,14 +333,75 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=0.25))
 	float BodycamEdgeInset = 0.04f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
-	int32 BodycamFontSize = 15;
+	/** OSD text size as a fraction of screen height (sets the monospace font size). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0.005, ClampMax=0.05))
+	float BodycamTextHeight = 0.018f;
+
+	/** Distance between stacked OSD rows, in multiples of the text line height. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=1, ClampMax=2))
+	float BodycamRowSpacing = 1.2f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
-	FLinearColor BodycamTextColor = FLinearColor(0.93f, 0.93f, 0.89f, 0.92f);
+	FLinearColor BodycamTextColor = FLinearColor(0.93f, 0.93f, 0.89f, 0.9f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
 	FLinearColor BodycamRecColor = FLinearColor(1.0f, 0.06f, 0.04f, 1.0f);
+
+	/** OSD text color below LowHealthThreshold (also used for low ammo and the damage tick). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
+	FLinearColor BodycamAlertColor = FLinearColor(1.0f, 0.2f, 0.16f, 0.95f);
+
+	/** REC dot blink rate in Hz, normally and at low health. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0.1))
+	float BodycamRecBlinkRate = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0.1))
+	float BodycamLowHealthRecBlinkRate = 3.0f;
+
+	/** Show the HDG (camera yaw) and SPD (m/s) line under the clock. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam")
+	bool bBodycamShowHeading = true;
+
+	/** How long the STYLE tag blinks inverted after a rank change. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(Units="s"))
+	float BodycamRankFlashDuration = 0.6f;
+
+	/** Character count of the text reload bar, e.g. [#####-----]. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=2, ClampMax=40))
+	int32 BodycamReloadBarChars = 10;
+
+	/** Chance per second (real time) that one OSD row (or the whole OSD) tears sideways for a single frame. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=1))
+	float BodycamGlitchChancePerSecond = 0.005f;
+
+	/** Maximum horizontal tear offset of a glitched row (Slate units). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0))
+	float BodycamGlitchMaxOffset = 6.0f;
+
+	/** Depth of the slow OSD brightness flicker (0 = steady). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=0.5))
+	float BodycamFlickerAmount = 0.04f;
+
+	/** Speed of the brightness flicker noise. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0))
+	float BodycamFlickerRate = 9.0f;
+
+	/** Bodycam hitmarker size relative to the game hitmarker, and its line thickness. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0.1, ClampMax=2))
+	float BodycamHitmarkerScale = 0.6f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0.5))
+	float BodycamHitmarkerThickness = 1.0f;
+
+	/** Red edge flash on the side a hit came from: lifetime, depth (fraction of the shorter screen side) and peak alpha. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(Units="s"))
+	float BodycamDamageFlashDuration = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=0.5))
+	float BodycamDamageFlashSize = 0.07f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=1))
+	float BodycamDamageFlashAlpha = 0.4f;
 
 	/** Battery percentage when the HUD is created, and its slow drain. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Bodycam", meta=(ClampMin=0, ClampMax=100))
@@ -385,6 +446,7 @@ private:
 	void TickAmmo(float Dt);
 	void TickRank(float Dt);
 	void TickDamageFeedback(float Dt);
+	void TickBodycam(float Dt);
 
 	struct FPainter;
 	void PaintVignette(const FPainter& P) const;
@@ -395,6 +457,8 @@ private:
 	void PaintAmmo(const FPainter& P) const;
 	void PaintRank(const FPainter& P) const;
 	void PaintBodycamOverlay(const FPainter& P) const;
+	void PaintBodycamHitmarker(const FPainter& P) const;
+	void PaintBodycamDamage(const FPainter& P) const;
 
 	FLinearColor GetRankColor(int32 RankIndex) const;
 
@@ -414,6 +478,16 @@ private:
 
 	/** UBodycamComponent blend alpha of the bound character (0 = normal HUD). */
 	float BodycamAlpha = 0.0f;
+
+	// Bodycam OSD
+	float OSDFlicker = 1.0f;       // brightness multiplier, ~1
+	float LowHealthBlend = 0.0f;   // 0..1, eases the OSD toward BodycamAlertColor
+	float RecPhase = 0.0f;         // accumulated blink phase (rate changes don't jump)
+	uint64 GlitchFrame = 0;        // GFrameCounter of the one frame that tears
+	int32 GlitchRow = -1;          // row that tears, INDEX_NONE = every row
+	float GlitchOffset = 0.0f;
+	float HeadingDeg = 0.0f;
+	float SpeedMetersPerSec = 0.0f;
 
 	// Crosshair
 	float Bloom = 0.0f;
@@ -439,6 +513,7 @@ private:
 	float HealthTrailHoldUntil = 0.0f;
 	float HealthValue = 0.0f;
 	float ArmorFrac = 0.0f;
+	float ArmorValue = 0.0f;
 	float ArmorTrail = 0.0f;
 	float ArmorTrailHoldUntil = 0.0f;
 	bool bHasArmor = false;

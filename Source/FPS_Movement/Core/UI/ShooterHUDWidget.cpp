@@ -52,6 +52,35 @@ namespace ShooterHUD
 	{
 		return Center + FVector2f(FMath::Sin(AngleRad), -FMath::Cos(AngleRad)) * Radius;
 	}
+
+	/** Bodycam OSD text rows; a glitch frame tears one of them (or all). */
+	enum EOSDRow : int32 { OSDRec, OSDStyle, OSDClock, OSDHeading, OSDVitals, OSDDash, OSDMag, OSDStatus, OSDDevice, OSDRowCount };
+
+	/** Zero-padded integer, e.g. ZeroPad(8, 2) == "08". Negative values clamp to 0. */
+	static FString ZeroPad(int32 Value, int32 Digits)
+	{
+		const FString S = FString::FromInt(FMath::Max(Value, 0));
+		return S.Len() < Digits ? FString::ChrN(Digits - S.Len(), TEXT('0')) + S : S;
+	}
+
+	/** Text gauge like "[#####-----]". */
+	static FString TextBar(float Fraction, int32 Chars)
+	{
+		const int32 Filled = FMath::Clamp(FMath::FloorToInt(Fraction * Chars), 0, Chars);
+		return FString(TEXT("[")) + FString::ChrN(Filled, TEXT('#')) + FString::ChrN(Chars - Filled, TEXT('-')) + TEXT("]");
+	}
+
+	/** OSD monospace font: about HeightFraction of the screen tall, with a 1 px dark outline. */
+	static FSlateFontInfo MakeOSDFont(float ScreenHeight, float HeightFraction, float Opacity)
+	{
+		// Slate font sizes are points at 96 DPI (1 pt = 4/3 px), so convert the requested pixel height.
+		const float Size = FMath::Max(6.0f, FMath::RoundToFloat(ScreenHeight * HeightFraction * 0.75f));
+		FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Mono", Size);
+		Font.OutlineSettings.OutlineSize = 1;
+		// The outline color isn't multiplied by the element tint, so it is faded here by hand.
+		Font.OutlineSettings.OutlineColor = FLinearColor(0.0f, 0.0f, 0.0f, 0.85f * Opacity);
+		return Font;
+	}
 }
 
 using namespace ShooterHUD;
@@ -364,9 +393,43 @@ void UShooterHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 	TickRank(Dt);
 	TickDamageFeedback(Dt);
 
+	TickBodycam(Dt);
+}
+
+void UShooterHUDWidget::TickBodycam(float Dt)
+{
 	const AShooterCharacter* Character = BoundCharacter.Get();
 	const UBodycamComponent* Bodycam = Character ? Character->GetBodycam() : nullptr;
 	BodycamAlpha = Bodycam ? Bodycam->GetBlendAlpha() : 0.0f;
+
+	const bool bLowHealth = HealthFrac > 0.0f && HealthFrac < LowHealthThreshold;
+	LowHealthBlend = FMath::FInterpTo(LowHealthBlend, bLowHealth ? 1.0f : 0.0f, Dt, 6.0f);
+	RecPhase = FMath::Fmod(RecPhase + Dt * FMath::Lerp(BodycamRecBlinkRate, BodycamLowHealthRecBlinkRate, LowHealthBlend), 1.0f);
+
+	if (BodycamAlpha <= 0.001f)
+	{
+		return;
+	}
+
+	// Slow brightness wander, never above 1 so the text stays at its authored brightness at peak.
+	OSDFlicker = 1.0f - BodycamFlickerAmount * (0.5f + 0.5f * FMath::PerlinNoise1D(Now * BodycamFlickerRate));
+
+	// Rare one-frame tear. Rolled on real time; the paint pass applies it only on this exact frame.
+	if (FMath::FRand() < BodycamGlitchChancePerSecond * Dt)
+	{
+		GlitchFrame = GFrameCounter;
+		GlitchRow = FMath::FRand() < 0.3f ? INDEX_NONE : FMath::RandRange(0, OSDRowCount - 1);
+		GlitchOffset = FMath::FRandRange(0.4f, 1.0f) * BodycamGlitchMaxOffset * (FMath::RandBool() ? 1.0f : -1.0f);
+	}
+
+	if (const APlayerController* PC = GetOwningPlayer())
+	{
+		FVector CamLoc;
+		FRotator CamRot;
+		PC->GetPlayerViewPoint(CamLoc, CamRot);
+		HeadingDeg = FRotator::ClampAxis(CamRot.Yaw);
+	}
+	SpeedMetersPerSec = Character ? Character->GetVelocity().Size2D() / 100.0f : 0.0f;
 }
 
 AShooterWeapon* UShooterHUDWidget::FindActiveWeapon() const
@@ -470,6 +533,7 @@ void UShooterHUDWidget::TickVitals(float Dt)
 		HealthValue = Attr->GetHealth();
 		const float MaxA = Attr->GetMaxArmor();
 		bHasArmor = MaxA > 0.0f;
+		ArmorValue = Attr->GetArmor();
 		NewArmor = bHasArmor ? Attr->GetArmor() / MaxA : 0.0f;
 	}
 	NewHealth = FMath::Clamp(NewHealth, 0.0f, 1.0f);
@@ -542,7 +606,9 @@ void UShooterHUDWidget::TickDamageFeedback(float Dt)
 {
 	VignetteAlpha = ExpDecay(VignetteAlpha, VignetteDecayRate, Dt);
 
-	DamageIndicators.RemoveAll([this](const FShooterHUDDamageIndicator& I) { return (Now - I.SpawnTime) > DamageIndicatorDuration; });
+	// The bodycam edge flash reads the same markers, so keep them for whichever look lasts longer.
+	const float IndicatorLife = FMath::Max(DamageIndicatorDuration, BodycamDamageFlashDuration);
+	DamageIndicators.RemoveAll([this, IndicatorLife](const FShooterHUDDamageIndicator& I) { return (Now - I.SpawnTime) > IndicatorLife; });
 	DamageNumbers.RemoveAll([this](const FShooterHUDDamageNumber& N) { return (Now - N.SpawnTime) > DamageNumberLifetime; });
 
 	if (DamageIndicators.Num() == 0)
@@ -599,26 +665,32 @@ int32 UShooterHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	const FPainter P{ AllottedGeometry, OutDrawElements, MaxLayer + 1, &SolidBrush,
 		HUDOpacity * InWidgetStyle.GetColorAndOpacityTint().A, FVector2f(AllottedGeometry.GetLocalSize()) };
 
-	// Bodycam mode: panels dim, the crosshair goes (optionally leaving a dot), hitmarkers stay,
-	// and the recorder overlay fades in. The overlay is Slate, so the lens material never warps it.
-	FPainter Panels = P;
-	Panels.Opacity *= FMath::Lerp(1.0f, BodycamPanelOpacity, BodycamAlpha);
-	FPainter Crosshair = P;
-	Crosshair.Opacity *= 1.0f - BodycamAlpha;
+	// Crossfade: the game HUD and the bodycam OSD are two complete layouts that read the same state.
+	// The game layout is painted with opacity (1 - alpha) and the OSD with opacity alpha, where alpha
+	// is UBodycamComponent's fade. Toggling therefore morphs smoothly between them, and at alpha 0 the
+	// game HUD paints exactly as it does without a bodycam (the OSD isn't drawn at all).
+	// The OSD is Slate, drawn over the scene, so the lens material never warps it.
+	FPainter Game = P;
+	Game.Opacity *= 1.0f - BodycamAlpha;
+	FPainter Cam = P;
+	Cam.Opacity *= BodycamAlpha;
 
-	// Layers: +0..1 vignette/backplates, +2..3 fills, +4..5 text, +6.. crosshair/markers, +10.. bodycam overlay.
-	PaintVignette(P);
-	PaintVitals(Panels);
-	PaintAmmo(Panels);
-	PaintRank(Panels);
-	PaintDamageIndicators(P);
-	PaintCrosshair(Crosshair);
-	PaintHitmarker(P);
-	if (BodycamAlpha > 0.001f)
+	// Layers: +0..1 vignette/backplates, +2..3 fills, +4..5 text, +6.. crosshair/markers, +10.. bodycam OSD.
+	if (Game.Opacity > 0.001f)
 	{
-		FPainter Overlay = P;
-		Overlay.Opacity *= BodycamAlpha;
-		PaintBodycamOverlay(Overlay);
+		PaintVignette(Game);
+		PaintVitals(Game);
+		PaintAmmo(Game);
+		PaintRank(Game);
+		PaintDamageIndicators(Game);
+		PaintCrosshair(Game);
+		PaintHitmarker(Game);
+	}
+	if (Cam.Opacity > 0.001f)
+	{
+		PaintBodycamDamage(Cam);
+		PaintBodycamHitmarker(Cam);
+		PaintBodycamOverlay(Cam);
 	}
 
 	return MaxLayer + 12;
@@ -986,21 +1058,56 @@ void UShooterHUDWidget::PaintRank(const FPainter& P) const
 	P.Rect(BarPos, FVector2f(RankBarWidth * RankProgress, 5.0f), WithAlpha(RankCol, PanelAlpha), PanelSkew, 0.0f, 3);
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bodycam OSD
+//
+// Burned-in body-worn-camera metadata: small outlined monospace fields in the corners, inset by
+// BodycamEdgeInset, instead of panels. Every function here is painted with opacity = bodycam
+// blend alpha (see NativePaint), mirroring the game layout's (1 - alpha).
+// ─────────────────────────────────────────────────────────────────────────────
+
 void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
 {
-	const FVector2f Inset(P.Size.X * BodycamEdgeInset, P.Size.Y * BodycamEdgeInset);
-
-	// Monospace with a 1px dark outline so it reads on any background.
-	FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Mono", BodycamFontSize);
-	Font.OutlineSettings.OutlineSize = 1;
-	Font.OutlineSettings.OutlineColor = FLinearColor(0.0f, 0.0f, 0.0f, 0.85f * P.Opacity);
-	const float LineH = FPainter::Measure(TEXT("0"), Font).Y;
+	const FVector2f Inset(FMath::RoundToFloat(P.Size.X * BodycamEdgeInset), FMath::RoundToFloat(P.Size.Y * BodycamEdgeInset));
+	const FSlateFontInfo Font = MakeOSDFont(P.Size.Y, BodycamTextHeight, P.Opacity);
+	const FVector2f CharSize = FPainter::Measure(TEXT("0"), Font);
+	const float LineH = CharSize.Y;
+	const float RowStep = FMath::RoundToFloat(LineH * BodycamRowSpacing);
 	constexpr int32 Layer = 10;
 
-	// ── Top-left: blinking REC dot (1 Hz) ───────────────────────────────
-	constexpr float DotSize = 12.0f;
-	const FVector2f DotTopLeft(Inset.X, Inset.Y + (LineH - DotSize) * 0.5f);
-	if (FMath::Fmod(Now, 1.0f) < 0.5f)
+	// Off-white text that eases toward the alert color at low health, with a faint brightness flicker.
+	auto Flicker = [this](FLinearColor C)
+	{
+		C.R *= OSDFlicker;
+		C.G *= OSDFlicker;
+		C.B *= OSDFlicker;
+		return C;
+	};
+	const FLinearColor TextCol = Flicker(FMath::Lerp(BodycamTextColor, BodycamAlertColor, LowHealthBlend));
+	const FLinearColor AlertCol = Flicker(BodycamAlertColor);
+	const float Blink = FMath::Fmod(Now * 2.0f, 1.0f) < 0.6f ? 1.0f : 0.3f;
+
+	// Rare single-frame horizontal tear of one row (or all of them).
+	const bool bGlitchFrame = GFrameCounter == GlitchFrame;
+	auto RowX = [&](int32 Row, float X)
+	{
+		return (bGlitchFrame && (GlitchRow == INDEX_NONE || GlitchRow == Row)) ? X + GlitchOffset : X;
+	};
+	auto Row = [&](int32 RowId, const FString& Str, float X, float Y, float AlignX, const FLinearColor& Col)
+	{
+		return P.Text(Str, Font, FVector2f(RowX(RowId, X), Y), FVector2f(AlignX, 0.0f), Col, 1.0f, nullptr, Layer);
+	};
+
+	const float Left = Inset.X;
+	const float Right = P.Size.X - Inset.X;
+	const float Top = Inset.Y;
+	const float Bottom = P.Size.Y - Inset.Y - LineH; // top of the lowest row
+
+	// ── Top-left: REC dot (blinks faster at low health) + STYLE tag ─────
+	const float DotSize = FMath::Min(12.0f, FMath::RoundToFloat(LineH * 0.6f));
+	const FVector2f DotTopLeft(RowX(OSDRec, Left), Top + FMath::RoundToFloat((LineH - DotSize) * 0.5f));
+	if (RecPhase < 0.5f)
 	{
 		const FVector2f Ring(1.0f, 1.0f);
 		FSlateDrawElement::MakeBox(P.Out, P.BaseLayer + Layer, P.Geo.ToPaintGeometry(FVector2f(DotSize + 2.0f, DotSize + 2.0f), FSlateLayoutTransform(1.0f, DotTopLeft - Ring)),
@@ -1008,14 +1115,73 @@ void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
 		FSlateDrawElement::MakeBox(P.Out, P.BaseLayer + Layer + 1, P.Geo.ToPaintGeometry(FVector2f(DotSize, DotSize), FSlateLayoutTransform(1.0f, DotTopLeft)),
 			&DotBrush, ESlateDrawEffect::None, P.Tint(BodycamRecColor));
 	}
-	P.Text(TEXT("REC"), Font, FVector2f(Inset.X + DotSize + 8.0f, Inset.Y), FVector2f(0.0f, 0.0f), BodycamTextColor, 1.0f, nullptr, Layer);
+	Row(OSDRec, TEXT("REC"), Left + DotSize + FMath::RoundToFloat(CharSize.X * 0.6f), Top, 0.0f, TextCol);
 
-	// ── Top-right: wall clock ───────────────────────────────────────────
-	const FString Stamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
-	P.Text(Stamp, Font, FVector2f(P.Size.X - Inset.X, Inset.Y), FVector2f(1.0f, 0.0f), BodycamTextColor, 1.0f, nullptr, Layer);
+	if (bHasRank)
+	{
+		const FString Title = RankTitles.IsValidIndex(RankIndex) ? RankTitles[RankIndex] : FString();
+		const FString Tag = Title.IsEmpty() ? FString::Printf(TEXT("STYLE %s"), *RankLetter) : FString::Printf(TEXT("STYLE %s // %s"), *RankLetter, *Title);
+		const float Y = Top + RowStep;
+		// On a rank change the tag blinks inverted (dark text on a light slab) a few times.
+		const float Since = Now - RankChangeTime;
+		if (Since < BodycamRankFlashDuration && FMath::Fmod(Since, 0.2f) < 0.12f)
+		{
+			const float X = RowX(OSDStyle, Left);
+			const float Pad = FMath::RoundToFloat(CharSize.X * 0.3f);
+			const FVector2f TagSize = FPainter::Measure(Tag, Font);
+			P.Rect(FVector2f(X - Pad, Y), FVector2f(TagSize.X + 2.0f * Pad, LineH), TextCol, 0.0f, 0.0f, Layer);
+			FSlateFontInfo Plain = Font;
+			Plain.OutlineSettings = FFontOutlineSettings::NoOutline;
+			P.Text(Tag, Plain, FVector2f(X, Y), FVector2f(0.0f, 0.0f), FLinearColor(0.0f, 0.0f, 0.0f, 0.9f), 1.0f, nullptr, Layer);
+		}
+		else
+		{
+			Row(OSDStyle, Tag, Left, Y, 0.0f, TextCol);
+		}
+	}
+
+	// ── Top-right: wall clock + heading / speed ─────────────────────────
+	Row(OSDClock, FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S")), Right, Top, 1.0f, TextCol);
+	if (bBodycamShowHeading)
+	{
+		const FString Hdg = FString::Printf(TEXT("HDG %s  SPD %s m/s"),
+			*ZeroPad(FMath::RoundToInt(HeadingDeg) % 360, 3), *ZeroPad(FMath::RoundToInt(SpeedMetersPerSec), 2));
+		Row(OSDHeading, Hdg, Right, Top + RowStep, 1.0f, TextCol);
+	}
+
+	// ── Bottom-left: vitals + dash charges ──────────────────────────────
+	const FString Armor = bHasArmor ? ZeroPad(FMath::CeilToInt(ArmorValue), 3) : FString(TEXT("---"));
+	Row(OSDVitals, FString::Printf(TEXT("HR %s  ARM %s"), *ZeroPad(FMath::CeilToInt(HealthValue), 3), *Armor), Left, Bottom - RowStep, 0.0f, TextCol);
+	if (MaxDashCharges > 0)
+	{
+		const int32 Charges = FMath::Clamp(DashCharges, 0, MaxDashCharges);
+		const FString Dash = FString::Printf(TEXT("DASH [%s%s]"), *FString::ChrN(Charges, TEXT('#')), *FString::ChrN(MaxDashCharges - Charges, TEXT('-')));
+		Row(OSDDash, Dash, Left, Bottom, 0.0f, TextCol);
+	}
+
+	// ── Bottom-right: magazine + reload / empty status ──────────────────
+	if (bHasAmmo && MagSize > 0)
+	{
+		const bool bEmpty = Bullets <= 0;
+		const bool bLow = Bullets <= FMath::CeilToInt(MagSize * LowAmmoFraction);
+		const int32 MagDigits = FMath::Max(2, FString::FromInt(MagSize).Len());
+		const FString Mag = FString::Printf(TEXT("MAG %s / %s"), *ZeroPad(Bullets, MagDigits), *ZeroPad(Reserve, 3));
+		Row(OSDMag, Mag, Right, Bottom, 1.0f, bLow ? AlertCol : TextCol);
+
+		const float StatusY = Bottom - RowStep;
+		if (bReloading)
+		{
+			// Steady gauge on the right, blinking label to its left.
+			const FVector2f BarSize = Row(OSDStatus, TextBar(ReloadProgress, BodycamReloadBarChars), Right, StatusY, 1.0f, TextCol);
+			Row(OSDStatus, TEXT("RELOADING"), Right - BarSize.X - CharSize.X, StatusY, 1.0f, WithAlpha(TextCol, Blink));
+		}
+		else if (bEmpty)
+		{
+			Row(OSDStatus, Reserve > 0 ? TEXT("RELOAD") : TEXT("NO AMMO"), Right, StatusY, 1.0f, WithAlpha(AlertCol, Blink));
+		}
+	}
 
 	// ── Bottom center: device id + battery ──────────────────────────────
-	// Centered so it clears the vitals / ammo panels in the bottom corners.
 	const float Battery = FMath::Clamp(BodycamBatteryStart - BodycamBatteryDrainPerMinute * (Now / 60.0f), 1.0f, 100.0f);
 	const bool bBatteryLow = Battery < 20.0f;
 	const FString Percent = FString::Printf(TEXT("%d%%"), FMath::CeilToInt(Battery));
@@ -1023,17 +1189,17 @@ void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
 	const FVector2f IdSize = FPainter::Measure(BodycamDeviceId, Font);
 	const FVector2f BattSize(FMath::RoundToFloat(LineH * 1.5f), FMath::RoundToFloat(LineH * 0.6f));
 	constexpr float NubW = 3.0f;
-	constexpr float IdGap = 22.0f;
+	const float IdGap = FMath::RoundToFloat(CharSize.X * 2.0f);
 	const FVector2f PctSize = FPainter::Measure(Percent, Font);
 	const float TotalW = IdSize.X + IdGap + BattSize.X + NubW + 6.0f + PctSize.X;
-	const float X0 = FMath::RoundToFloat((P.Size.X - TotalW) * 0.5f);
-	const float Y0 = P.Size.Y - Inset.Y - LineH;
+	const float X0 = RowX(OSDDevice, FMath::RoundToFloat((P.Size.X - TotalW) * 0.5f));
+	const float Y0 = Bottom;
 
-	P.Text(BodycamDeviceId, Font, FVector2f(X0, Y0), FVector2f(0.0f, 0.0f), BodycamTextColor, 1.0f, nullptr, Layer);
+	P.Text(BodycamDeviceId, Font, FVector2f(X0, Y0), FVector2f(0.0f, 0.0f), TextCol, 1.0f, nullptr, Layer);
 
 	const FVector2f BattPos(X0 + IdSize.X + IdGap, FMath::RoundToFloat(Y0 + (LineH - BattSize.Y) * 0.5f));
 	const FLinearColor Dark(0.0f, 0.0f, 0.0f, 0.75f);
-	const FLinearColor BattCol = bBatteryLow ? BodycamRecColor : BodycamTextColor;
+	const FLinearColor BattCol = bBatteryLow ? BodycamRecColor : TextCol;
 	constexpr float Th = 1.5f;
 	// Dark backing doubles as the 1px outline.
 	P.Rect(BattPos - FVector2f(1.0f, 1.0f), BattSize + FVector2f(NubW + 2.0f, 2.0f), Dark, 0.0f, 0.0f, Layer);
@@ -1054,6 +1220,98 @@ void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
 		const FVector2f C = P.Size * 0.5f;
 		const FVector2f D(CrosshairDotSize, CrosshairDotSize);
 		P.RectCentered(C, D + FVector2f(2.0f, 2.0f), ColorShadow, 0.0f, 0.0f, Layer);
-		P.RectCentered(C, D, BodycamTextColor, 0.0f, 0.0f, Layer + 1);
+		P.RectCentered(C, D, TextCol, 0.0f, 0.0f, Layer + 1);
+	}
+}
+
+void UShooterHUDWidget::PaintBodycamHitmarker(const FPainter& P) const
+{
+	// Same timing and stacking state as the game hitmarker, drawn as four thin, small ticks with no
+	// punch: white, or the alert red for a kill.
+	const float Duration = HitKind == 2 ? KillHitmarkerDuration : HitmarkerDuration;
+	const float Age = Now - HitTime;
+	if (Age < 0.0f || Age >= Duration)
+	{
+		return;
+	}
+
+	const float T = Age / Duration;
+	const float Alpha = 1.0f - T * T;
+	const bool bKill = HitKind == 2;
+	const float S = BodycamHitmarkerScale * (bKill ? 1.25f : 1.0f);
+	const FLinearColor Col = WithAlpha(bKill ? BodycamAlertColor : FLinearColor(1.0f, 1.0f, 1.0f, 0.9f), Alpha);
+	const FLinearColor Dark(0.0f, 0.0f, 0.0f, 0.5f * Alpha);
+	const float Len = HitmarkerLength * S;
+	const float Th = BodycamHitmarkerThickness;
+	const float Dist = HitmarkerInnerRadius * S + Len * 0.5f;
+	const FVector2f C = P.Size * 0.5f;
+
+	static const FVector2f Diag[4] = { FVector2f(1, -1), FVector2f(1, 1), FVector2f(-1, 1), FVector2f(-1, -1) };
+	for (int32 i = 0; i < 4; ++i)
+	{
+		const FVector2f Center = C + Diag[i] * UE_INV_SQRT_2 * Dist;
+		const float Angle = (i % 2 == 0) ? 45.0f : -45.0f;
+		P.RectCentered(Center, FVector2f(Th + 2.0f, Len + 2.0f), Dark, 0.0f, Angle, 8);
+		P.RectCentered(Center, FVector2f(Th, Len), Col, 0.0f, Angle, 9);
+	}
+}
+
+void UShooterHUDWidget::PaintBodycamDamage(const FPainter& P) const
+{
+	if (DamageIndicators.Num() == 0)
+	{
+		return;
+	}
+
+	// A brief red flash along the screen edge the hit came from, plus a jittering "!" just inside
+	// the OSD inset on that side. Uses the same markers (and screen angles) as the game arcs.
+	const FVector2f C = P.Size * 0.5f;
+	const float Depth = FMath::Min(P.Size.X, P.Size.Y) * BodycamDamageFlashSize;
+	constexpr int32 Strips = 8;
+	const float StripW = Depth / Strips;
+	const float FlashLife = FMath::Max(BodycamDamageFlashDuration, 0.01f);
+	const float TickLife = FMath::Min(0.25f, FlashLife);
+	const FSlateFontInfo Font = MakeOSDFont(P.Size.Y, BodycamTextHeight, P.Opacity);
+
+	for (const FShooterHUDDamageIndicator& I : DamageIndicators)
+	{
+		const float Age = Now - I.SpawnTime;
+		if (Age < 0.0f || Age > FlashLife)
+		{
+			continue;
+		}
+
+		const float T = Age / FlashLife;
+		const float Alpha = BodycamDamageFlashAlpha * (1.0f - T) * (1.0f - T);
+
+		// The edge a ray from the center along the marker angle leaves through.
+		const FVector2f Dir(FMath::Sin(I.ScreenAngle), -FMath::Cos(I.ScreenAngle));
+		const bool bSideEdge = FMath::Abs(Dir.X) * C.Y > FMath::Abs(Dir.Y) * C.X;
+
+		for (int32 s = 0; s < Strips; ++s)
+		{
+			const float Fall = 1.0f - static_cast<float>(s) / Strips;
+			const FLinearColor Col = WithAlpha(BodycamAlertColor, Alpha * Fall * Fall);
+			const float O = s * StripW;
+			if (bSideEdge)
+			{
+				P.Rect(FVector2f(Dir.X > 0.0f ? P.Size.X - O - StripW : O, 0.0f), FVector2f(StripW, P.Size.Y), Col, 0.0f, 0.0f, 2);
+			}
+			else
+			{
+				P.Rect(FVector2f(0.0f, Dir.Y > 0.0f ? P.Size.Y - O - StripW : O), FVector2f(P.Size.X, StripW), Col, 0.0f, 0.0f, 2);
+			}
+		}
+
+		// "!" glitch tick: short-lived, drops out on some frames and hops sideways at 30 Hz.
+		if (Age < TickLife && FMath::Fmod(Age * 20.0f, 1.0f) < 0.75f)
+		{
+			const FVector2f Half = C - FVector2f(P.Size.X, P.Size.Y) * BodycamEdgeInset * 1.5f;
+			const float Tx = FMath::Abs(Dir.X) > KINDA_SMALL_NUMBER ? Half.X / FMath::Abs(Dir.X) : TNumericLimits<float>::Max();
+			const float Ty = FMath::Abs(Dir.Y) > KINDA_SMALL_NUMBER ? Half.Y / FMath::Abs(Dir.Y) : TNumericLimits<float>::Max();
+			FVector2f Pos = C + Dir * FMath::Min(Tx, Ty);
+			Pos.X += (FMath::FloorToInt(Age * 30.0f) % 2 == 0) ? -3.0f : 3.0f;
+			P.Text(TEXT("!"), Font, Pos, FVector2f(0.5f, 0.5f), BodycamAlertColor, 1.0f, nullptr, 10);
+		}
 	}
 }

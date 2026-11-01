@@ -26,7 +26,7 @@ Toggle it in game with **B**, or with `carnage.Bodycam.Enable 1|0`. It fades in 
 | `UBodycamComponent` | `Source/FPS_Movement/Camera/BodycamComponent.*` | State, fade, tunables, rig simulation, lens instance, modifier lifetime |
 | `UBodycamCameraModifier` | `Source/FPS_Movement/Camera/BodycamCameraModifier.*` | Thin modifier (Priority 200, after `UDoomCameraModifier`) that forwards `ModifyCamera` / `ModifyPostProcess` to the component |
 | `ACarnageLevelRules` | `Source/FPS_Movement/Core/CarnageLevelRules.*` | `AInfo` placed in a level; `bStartWithBodycam` is the level default |
-| HUD overlay | `UShooterHUDWidget::PaintBodycamOverlay` | REC dot, clock, device line, battery; dims panels, hides the crosshair |
+| HUD OSD | `UShooterHUDWidget::PaintBodycam*` | Camera-style OSD that crossfades with the game HUD (see below) |
 | `M_BodycamLens` | `/Game/Carnage/Bodycam/M_BodycamLens` | Post-process lens material (after tonemapping) |
 | `IA_ToggleBodycam` | `/Game/Input/Actions/IA_ToggleBodycam`, mapped to B in `/Game/Input/IMC_Default` | Toggle input |
 | Generator | `Tools/Python/make_bodycam_assets.py` | Rebuilds the material and the input action and mapping (idempotent) |
@@ -159,18 +159,37 @@ material's defaults for `Distortion`, `ChromaticAberration`, `Border` and `Rolli
 0. For blend weights below 1, the engine lerps instance parameters from the base material, so
 neutral defaults are what make the fade smooth.
 
-## HUD overlay
+## HUD: camera OSD
 
-The overlay is drawn in Slate on top of the scene, so the lens never distorts it.
+In bodycam mode the game HUD is replaced by burned-in camera metadata. It is drawn in Slate on top
+of the scene, so the lens never distorts it.
 
-- **REC:** top-left, a red dot blinking at 1 Hz plus the word "REC".
-- **Clock:** top-right, real-time `YYYY-MM-DD HH:MM:SS`.
-- **Device line:** bottom centre, `BodycamDeviceId` ("CARNAGE // UNIT 07 // CAM-02", fictional)
-  and a battery glyph that drains slowly from 87% at 1% per minute. It is centred so it clears
-  the vitals and ammo panels.
-- **Font:** monospace (`Mono`) with a 1 px dark outline, inset 4% from each edge.
-- **Panels:** the crosshair hides (set `bBodycamCenterDot` to keep a dot), hitmarkers stay, and
-  the vitals, ammo and rank panels dim to `BodycamPanelOpacity` (0.65).
+- **Crossfade:** `UShooterHUDWidget::NativePaint` paints the game layout at opacity
+  `1 - alpha` and the OSD at `alpha`, where alpha is `UBodycamComponent::GetBlendAlpha()`. B
+  morphs between the two over the 0.35 s fade. At alpha 0 the OSD isn't drawn and the game HUD
+  is unchanged.
+- **Text:** the engine's `Mono` typeface (Droid Sans Mono), off-white at 0.9 alpha with a 1 px
+  dark outline, about 1.8% of screen height (`BodycamTextHeight`), inset 4% from each edge.
+  There are no backplates, accents or large numerals.
+
+| Where | Fields |
+|---|---|
+| Top-left | Red `REC` dot (1 Hz), `STYLE D // DRIFTER` (blinks inverted on a rank change) |
+| Top-right | `YYYY-MM-DD HH:MM:SS`, `HDG 274  SPD 12 m/s` (camera yaw, ground speed) |
+| Bottom-left | `HR 100  ARM 050`, `DASH [##-]` |
+| Bottom-right | Blinking `RELOADING [####------]`, `RELOAD` or `NO AMMO`; `MAG 08 / 090` (red when low) |
+| Bottom centre | `BodycamDeviceId` (fictional) and a battery glyph draining from 87% at 1% per minute |
+
+- **Combat feedback:** hitmarkers become four thin white ticks (red on a kill), with no punch or
+  damage numbers. An incoming hit flashes the screen edge on that side red for 0.35 s, with a
+  short jittering `!` just inside the OSD. The crosshair is hidden; `bBodycamCenterDot` keeps a
+  dot.
+- **Low health:** below `LowHealthThreshold` the OSD text eases to `BodycamAlertColor` and the
+  REC dot blinks at 3 Hz.
+- **Flavour:** a very slight brightness flicker (`BodycamFlickerAmount` 0.04) and a rare
+  one-frame sideways tear of one row or the whole OSD (`BodycamGlitchChancePerSecond` 0.005,
+  rolled on real time).
+- **Tunables:** all are under **HUD|Bodycam** on the widget.
 
 ## Accessibility and console
 
