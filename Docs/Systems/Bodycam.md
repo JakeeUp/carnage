@@ -153,11 +153,65 @@ vignette 0.6, white temp 7000).
 - **Housing border:** a rounded rectangle (radius 0.16), a 45% lens falloff toward the corners,
   and a fade to black where samples fall outside the frame. `Border` scales all three.
 
+- **Damage static** (`DamageStatic`, `LowHealthStatic`): see the next section.
+
 Parameters are set each frame on a `UMaterialInstanceDynamic`. It is added to
 `WeightedBlendables` with weight 1, and the whole PP blend carries the fade alpha. The base
 material's defaults for `Distortion`, `ChromaticAberration`, `Border` and `RollingShutter` are
 0. For blend weights below 1, the engine lerps instance parameters from the base material, so
 neutral defaults are what make the fade smooth.
+
+### Damage static
+
+When the player is hit in bodycam mode the feed glitches with red analog TV static. It's part of
+`M_BodycamLens`, so the normal game view never shows it.
+
+**Driving it (`UBodycamComponent`):**
+
+- **Hits:** the component binds the owner's `OnDamaged(LifePercent)`. A drop in health is a
+  hit, and its size sets the impulse:
+  - a drop of `LightHitHealthDrop` (0.02) adds `LightHitImpulse` (0.3); smaller drops scale down
+    linearly,
+  - a drop of `HeavyHitHealthDrop` (0.2) or more adds 1,
+  - between the two the impulse ramps linearly.
+- **Armour hits:** `OnDamageSource` without a health drop in the same frame (armour soaked it)
+  adds `ArmorHitImpulse` (0.2).
+- **Envelope:** impulses stack, capped at 1. The visible value rises towards the impulse with a
+  25 ms time constant (`DamageStaticAttackTime`) and the impulse releases exponentially. The
+  release time (to 10%) runs from `LightHitReleaseTime` (0.18 s) to `HeavyHitReleaseTime`
+  (0.45 s) by hit size; a stacked burst keeps the longest. It runs on real time, so kill
+  hit-stop doesn't freeze it.
+- **Output:** `DamageStatic = value * BlendAlpha * accessibility`. The PP blend weight is the
+  fade alpha too, so the static is gone well before the normal view is back.
+- **Jolt:** hits with an impulse of at least `HitJoltMinImpulse` (0.6) kick the landing spring
+  (about 1.2° nod) and the footstep spring (about 1.5° roll, random side). These are scaled by
+  Motion, ADS and the fade like every other rig impulse.
+- **Low health:** below `LowHealthStaticThreshold` (30% health), `LowHealthStatic` goes from
+  `LowHealthStaticMin` (0.35) at the threshold to 1 at zero health, eased at rate 4 so it doesn't
+  pop. It uses the same alpha and accessibility scale.
+
+**Material (`BodycamUV` and `BodycamDamageStatic` custom nodes):**
+
+| Layer | What it does |
+|---|---|
+| Tearing | Rows are cut into 14-48 bands, re-rolled at 30 Hz. A fraction `0.6 * D` of the bands is sampled with a sideways offset of up to `StaticTear` (0.07 UV) times D. |
+| Rolling band | A band rolls up the frame at 0.8 screens/s and wobbles sideways. |
+| Chromatic split | R and B are sampled `±StaticSplit` (0.012 UV) times D apart, on top of the lens fringing. |
+| Static | Per-pixel hash noise in `StaticNoiseScale` (2 px) cells, re-rolled at 60 Hz, with per-line brightness noise. It's tinted `StaticTint` (1, 0.06, 0.04) and blended over the scene by `D^1.5 * 0.62`. |
+| Red grade | The scene is pulled towards red luminance by `D^2 * 0.6`. |
+| Crackle | The brightest noise cells become red sparks. The density is `0.03 D + 0.1 D^2`, weighted towards the edges. |
+| Dropout | Above D = 0.6, up to 30% of 24 Hz frames lose the signal and collapse to static. |
+| Low health | Pulsing (1.1 Hz) red static at 5-15%, 2 px scanlines and a red edge tint, all weighted towards the edges. |
+
+- **Centre readability:** tearing and static are cut to about a third inside r ≈ 0.06-0.4 of
+  the screen height. Even at D = 1 the centre keeps a little of the cut.
+- **Feel by hit size:**
+  - a light hit (about 0.3) is sparse sparks, a few torn rows and a slight split, gone in about
+    0.2 s;
+  - a medium hit (about 0.55) is a red wash with heavy edge static, and the centre still reads;
+  - a heavy hit (1) is near-total red static with dropouts for about 0.4 s.
+
+The noise hash is "Hash without Sine" (`hash12`) by Dave Hoskins (MIT licence).
 
 ## HUD: camera OSD
 
@@ -203,6 +257,26 @@ over 0..1 and default to 1.
 | `carnage.Bodycam.Motion` | Lag, roll, footsteps, landing, rolling shutter, motion blur |
 | `carnage.Bodycam.ChromaticAberration` | Lens chromatic aberration |
 | `carnage.Bodycam.Grain` | Film grain |
+| `carnage.Bodycam.DamageStatic` | Damage static and low-health static (flashing content) |
+
+Debug console variables (not in shipping builds):
+
+| Console variable | Effect |
+|---|---|
+| `carnage.Debug.BodycamDamageTest <drop>` | Simulates a hit with that health drop (0.02 light, 0.2 heavy) without dealing damage. It fires once and resets to 0. |
+| `carnage.Debug.BodycamDamageTestDelay <s>` | Delay before the test hit, counted from when the local player's component picks it up. |
+| `carnage.Debug.BodycamDamageHold <0..1>` | Pins the damage static value for screenshots and tuning (-1 = off). |
+| `carnage.Debug.BodycamHealthOverride <0..1>` | Health fraction for the low-health layer (-1 = off). |
+
+To capture a heavy burst without enemies:
+
+```
+-ExecCmds="carnage.Bodycam.Enable 1,carnage.Debug.BodycamDamageTestDelay 0.85,carnage.Debug.BodycamDamageTest 0.2,carnage.Debug.FeelCapture 1"
+```
+
+FeelCapture's first screenshot comes about 1 s after the pawn exists, so the hit lands just
+before it. Screenshot timing jitters with the frame rate, so use `BodycamDamageHold` for a frame
+at an exact intensity.
 
 ## Likely to need visual tuning
 
@@ -216,6 +290,9 @@ over 0..1 and default to 1.
 - **Fringing:** `CAStrength`.
 - **Footsteps:** stride lengths (they depend on the game's move speeds) and step amplitudes.
 - **Grading:** white temperature and saturation, per level lighting.
+- **Damage static:** checked only from held-value and test-hit screenshots on Lvl_Shooter, not
+  under real enemy fire. The impulse curve, the release times and the low-health layer (faint by
+  design) may need tuning in play.
 
 ## Credits and licences
 
@@ -223,8 +300,10 @@ over 0..1 and default to 1.
   `r' = r (1 + k1 r^2 + k2 r^4)` (D. C. Brown, 1966). The formulation follows the description in
   [ayamflow/glsl-barrel-pincushion](https://github.com/ayamflow/glsl-barrel-pincushion) (MIT
   licence). The HLSL in `make_bodycam_assets.py` was written from the formula; no code was copied.
-- **Other code:** the chromatic aberration, rolling shutter, rounded-rect border, springs and
-  overlay are original to this project.
+- **Static noise:** "Hash without Sine" `hash12` by Dave Hoskins (MIT licence), in the damage
+  static custom nodes.
+- **Other code:** the chromatic aberration, rolling shutter, rounded-rect border, damage static
+  layers, springs and overlay are original to this project.
 - **Engine features:** film grain, sharpen, vignette, bloom and grading are Unreal Engine
   post-process features.
 - **Fonts:** the overlay uses the engine's bundled default `Mono` typeface (Droid Sans Mono,
