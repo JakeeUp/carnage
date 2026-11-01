@@ -50,6 +50,9 @@ private:
 
 	/** Move test: hold forward input every frame while set. */
 	bool bHoldForward = false;
+
+	/** Move test: movement input held every frame (X = forward, Y = right); zero = none. */
+	FVector2D HoldInput = FVector2D::ZeroVector;
 	float NextLogTime = 0.0f;
 	FString Phase;
 

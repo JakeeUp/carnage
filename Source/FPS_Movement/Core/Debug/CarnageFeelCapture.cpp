@@ -182,6 +182,15 @@ void UCarnageFeelCapture::Tick(float DeltaTime)
 		}
 	}
 
+	if (!HoldInput.IsZero())
+	{
+		if (AShooterCharacter* C = GetPlayerShooter(GetWorld()))
+		{
+			C->AddMovementInput(C->GetActorForwardVector(), static_cast<float>(HoldInput.X));
+			C->AddMovementInput(C->GetActorRightVector(), static_cast<float>(HoldInput.Y));
+		}
+	}
+
 	if (!Phase.IsEmpty() && Elapsed >= NextLogTime)
 	{
 		NextLogTime = Elapsed + 0.05f;
@@ -207,9 +216,10 @@ void UCarnageFeelCapture::LogMovement()
 		return;
 	}
 	const FVector L = C->GetActorLocation();
-	const TCHAR* State = M->IsSliding() ? TEXT("SLIDE") : M->IsFalling() ? TEXT("AIR") : TEXT("GROUND");
-	UE_LOG(LogFPS_Movement, Display, TEXT("[MoveTest] %s t=%.2f x=%.0f z=%.1f spd2D=%.0f vz=%.0f state=%s"),
-		*Phase, Elapsed, L.X, L.Z, M->Velocity.Size2D(), M->Velocity.Z, State);
+	const TCHAR* State = M->IsWallRunning() ? TEXT("WALLRUN") : M->IsSliding() ? TEXT("SLIDE") : M->IsFalling() ? TEXT("AIR")
+		: M->IsSprinting() ? TEXT("SPRINT") : TEXT("GROUND");
+	UE_LOG(LogFPS_Movement, Display, TEXT("[MoveTest] %s t=%.2f x=%.0f y=%.0f z=%.1f spd2D=%.0f vz=%.0f state=%s"),
+		*Phase, Elapsed, L.X, L.Y, L.Z, M->Velocity.Size2D(), M->Velocity.Z, State);
 }
 
 void UCarnageFeelCapture::BuildMoveTest()
@@ -244,7 +254,23 @@ void UCarnageFeelCapture::BuildMoveTest()
 		{ 8.5f,  [this, World]() { Phase = TEXT("jump_tap"); if (AShooterCharacter* C = GetPlayerShooter(World)) { C->DoJumpStart(); } } },
 		{ 8.56f, [World]() { if (AShooterCharacter* C = GetPlayerShooter(World)) { C->DoJumpEnd(); } } },
 		{ 9.5f,  [this]() { Phase.Empty(); } },
-		{ 10.0f, [World]()
+
+		// Sprint direction: a pure strafe must stay at walk speed, forward reaches sprint speed.
+		{ 10.0f, [Teleport]() { Teleport(FVector(12500.0f, -300.0f, 120.0f)); } },
+		{ 10.6f, [this, Move]() { Phase = TEXT("strafe_sprint"); HoldInput = FVector2D(0.0, 1.0); if (auto* M = Move()) { M->StartSprint(); } } },
+		{ 11.8f, [this, Move]() { HoldInput = FVector2D::ZeroVector; if (auto* M = Move()) { M->StopSprint(); } Phase.Empty(); } },
+		{ 12.4f, [Teleport]() { Teleport(FVector(11800.0f, 0.0f, 120.0f)); } },
+		{ 13.0f, [this, Move]() { Phase = TEXT("forward_sprint"); HoldInput = FVector2D(1.0, 0.0); if (auto* M = Move()) { M->StartSprint(); } } },
+		{ 14.2f, [this, Move]() { HoldInput = FVector2D::ZeroVector; if (auto* M = Move()) { M->StopSprint(); } Phase.Empty(); } },
+
+		// Wall run: sprint off the top mantle step, jump toward the left wall of the corridor.
+		{ 14.8f, [Teleport]() { Teleport(FVector(5450.0f, -60.0f, 580.0f)); } },
+		{ 15.4f, [this, Move]() { Phase = TEXT("wallrun"); HoldInput = FVector2D(1.0, -0.45); if (auto* M = Move()) { M->StartSprint(); } } },
+		{ 15.75f, [World]() { if (AShooterCharacter* C = GetPlayerShooter(World)) { C->DoJumpStart(); } } },
+		{ 15.95f, [World]() { if (AShooterCharacter* C = GetPlayerShooter(World)) { C->DoJumpEnd(); } } },
+		{ 17.8f, [this, Move]() { HoldInput = FVector2D::ZeroVector; if (auto* M = Move()) { M->StopSprint(); } Phase.Empty(); } },
+
+		{ 18.3f, [World]()
 			{
 #if !UE_BUILD_SHIPPING
 				if (CVarFeelCaptureQuit.GetValueOnGameThread() != 0)
