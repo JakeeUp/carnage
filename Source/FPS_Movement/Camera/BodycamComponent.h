@@ -112,9 +112,13 @@ public:
 
 	// ── Rig ─────────────────────────────────────────────────────────────
 
-	/** Chest mount offset from the eye, in the pawn's yaw frame (X forward, Z up). */
+	/**
+	 * View offset from the eye, in the pawn's yaw frame (X forward, Z up). Defaults to zero: the
+	 * first-person arms are attached to the camera component, so moving only the view puts the
+	 * lens under the forearm. The chest-cam read comes from the lens, FOV, lag and roll instead.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Rig", meta=(Units="cm"))
-	FVector ChestMountOffset = FVector(10.0f, 0.0f, -20.0f);
+	FVector ChestMountOffset = FVector::ZeroVector;
 
 	/** Degrees added on top of the current (movement + ADS) world FOV. Offsets the ~1.3x centre zoom of the lens normalisation. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Rig", meta=(ClampMin=0, ClampMax=40))
