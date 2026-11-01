@@ -302,7 +302,7 @@ public:
 	TArray<FString> RankTitles;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Rank")
-	int32 RankFontSize = 64;
+	int32 RankFontSize = 56;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD|Rank")
 	float RankBarWidth = 150.0f;

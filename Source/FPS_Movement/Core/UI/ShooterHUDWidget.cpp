@@ -972,7 +972,7 @@ void UShooterHUDWidget::PaintRank(const FPainter& P) const
 	const FSlateFontInfo TitleFont = FCoreStyle::GetDefaultFontStyle("BoldCondensed", 14);
 	const FSlateFontInfo LetterFont = FCoreStyle::GetDefaultFontStyle("Black", RankFontSize);
 
-	P.Text(TEXT("STYLE"), LabelFont, FVector2f(TR.X - 14.0f, Origin.Y + 8.0f), FVector2f(1.0f, 0.0f), WithAlpha(ColorPrimary, 0.55f * PanelAlpha), 1.0f, nullptr, 4);
+	P.Text(TEXT("STYLE"), LabelFont, FVector2f(TR.X - 4.0f, Origin.Y - 6.0f), FVector2f(1.0f, 1.0f), WithAlpha(ColorPrimary, 0.55f * PanelAlpha), 1.0f, nullptr, 4);
 
 	const float Punch = 1.0f + (bRankUp ? RankUpPunch : -0.15f) * PunchT;
 	// Small horizontal shake on rank-down.
