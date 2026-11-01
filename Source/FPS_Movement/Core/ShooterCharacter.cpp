@@ -634,10 +634,7 @@ void AShooterCharacter::UpdateADS(float DeltaSeconds)
 			Weapon ? Weapon->GetADSFirstPersonFOV() : -1.0f);
 	}
 
-	if (RecoilComponent)
-	{
-		RecoilComponent->SetVisualScale(FMath::Lerp(1.0f, 0.35f, ADSAlpha));
-	}
+	// UWeaponRecoilComponent reads GetADSAlpha() itself when composing the viewmodel.
 }
 
 void AShooterCharacter::DoDash()
