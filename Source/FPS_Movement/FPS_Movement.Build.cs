@@ -19,6 +19,7 @@ public class FPS_Movement : ModuleRules
 			"GameplayStateTreeModule",
 			"UMG",
 			"Slate",
+			"SlateCore",
 			"GameplayAbilities",
 			"GameplayTags",
 			"GameplayTasks",
