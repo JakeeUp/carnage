@@ -415,7 +415,7 @@ void AShooterWeapon::FireHitscan(const FVector& TargetLocation)
 
 APlayerController* AShooterWeapon::GetLocalViewer() const
 {
-	APlayerController* PC = PawnOwner ? Cast<APlayerController>(PawnOwner->GetController()) : nullptr;
+	APlayerController* PC = PawnOwner.IsValid() ? Cast<APlayerController>(PawnOwner->GetController()) : nullptr;
 	return (PC && PC->IsLocalController() && PC->PlayerCameraManager) ? PC : nullptr;
 }
 
@@ -515,7 +515,7 @@ void AShooterWeapon::PlayMuzzleFX(const FVector& AimDirection)
 				Right = FVector::CrossProduct(FVector::UpVector, Forward).GetSafeNormal(UE_SMALL_NUMBER, GetActorRightVector());
 				Up = FVector::CrossProduct(Forward, Right);
 			}
-			const FVector InheritVelocity = PawnOwner ? PawnOwner->GetVelocity() : FVector::ZeroVector;
+			const FVector InheritVelocity = PawnOwner.IsValid() ? PawnOwner->GetVelocity() : FVector::ZeroVector;
 			FX->PlayShellEject(Muzzle, GetDefault<UCarnageWeaponFXSettings>()->Shell.SocketName, bFirstPerson, Right, Up, Forward, InheritVelocity);
 		}
 	}
