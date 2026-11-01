@@ -18,6 +18,7 @@ class UDoomMovementComponent;
 class UDoomCameraEffectsComponent;
 class UWeaponRecoilComponent;
 class UStyleMeterComponent;
+class UBodycamComponent;
 class UCarnageAbilitySystemComponent;
 class UCarnageAttributeSet;
 class UGameplayEffect;
@@ -48,6 +49,9 @@ class FPS_MOVEMENT_API AShooterCharacter : public AFPS_MovementCharacter, public
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStyleMeterComponent> StyleMeter;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UBodycamComponent> Bodycam;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta = (AllowPrivateAccess = "true"))
 	UCarnageAbilitySystemComponent* AbilitySystem;
 
@@ -76,6 +80,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* ReloadAction;
+
+	/** Toggles the bodycam look (B in IMC_Default). Defaults to /Game/Input/Actions/IA_ToggleBodycam. */
+	UPROPERTY(EditAnywhere, Category="Input")
+	TSoftObjectPtr<UInputAction> ToggleBodycamAction;
 
 	UPROPERTY(EditAnywhere, Category ="Weapons")
 	FName FirstPersonWeaponSocket = FName("HandGrip_R");
@@ -279,6 +287,7 @@ protected:
 	void DoStopMove() { LastMoveInput = FVector2D::ZeroVector; }
 	void DoStartADS();
 	void DoStopADS();
+	void DoToggleBodycam();
 
 public:
 
@@ -307,6 +316,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	AShooterWeapon* GetCurrentWeapon() const { return CurrentWeapon; }
+
+	UFUNCTION(BlueprintPure, Category="Camera")
+	UBodycamComponent* GetBodycam() const { return Bodycam; }
 
 protected:
 

@@ -21,6 +21,7 @@
 #include "CarnageWeaponFXSubsystem.h"
 #include "CarnageWeaponFXSettings.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Camera/CameraComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 
@@ -423,9 +424,14 @@ void AShooterWeapon::GetShotRay(const FVector& TargetLocation, FVector& OutStart
 {
 	if (const APlayerController* PC = GetLocalViewer())
 	{
-		const APlayerCameraManager* Cam = PC->PlayerCameraManager;
-		OutStart = Cam->GetCameraLocation();
-		OutDirection = (TargetLocation - OutStart).GetSafeNormal(UE_SMALL_NUMBER, Cam->GetCameraRotation().Vector());
+		// Trace from the camera COMPONENT along the control rotation (where the gun points), not
+		// from the camera manager's final POV. Camera modifiers (bodycam lag, chest mount, view
+		// punch) move the rendered view without moving the aim.
+		const FRotator AimRot = PC->GetControlRotation();
+		const AShooterCharacter* OwnerChar = Cast<AShooterCharacter>(PawnOwner.Get());
+		const UCameraComponent* AimCamera = OwnerChar ? OwnerChar->GetFirstPersonCameraComponent() : nullptr;
+		OutStart = AimCamera ? AimCamera->GetComponentLocation() : PC->PlayerCameraManager->GetCameraLocation();
+		OutDirection = (TargetLocation - OutStart).GetSafeNormal(UE_SMALL_NUMBER, AimRot.Vector());
 		return;
 	}
 

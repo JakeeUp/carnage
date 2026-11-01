@@ -7,6 +7,7 @@
 #include "StyleMeterComponent.h"
 #include "DoomMovementComponent.h"
 #include "CarnageAttributeSet.h"
+#include "BodycamComponent.h"
 
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -362,6 +363,10 @@ void UShooterHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 	TickVitals(Dt);
 	TickRank(Dt);
 	TickDamageFeedback(Dt);
+
+	const AShooterCharacter* Character = BoundCharacter.Get();
+	const UBodycamComponent* Bodycam = Character ? Character->GetBodycam() : nullptr;
+	BodycamAlpha = Bodycam ? Bodycam->GetBlendAlpha() : 0.0f;
 }
 
 AShooterWeapon* UShooterHUDWidget::FindActiveWeapon() const
@@ -594,14 +599,27 @@ int32 UShooterHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	const FPainter P{ AllottedGeometry, OutDrawElements, MaxLayer + 1, &SolidBrush,
 		HUDOpacity * InWidgetStyle.GetColorAndOpacityTint().A, FVector2f(AllottedGeometry.GetLocalSize()) };
 
-	// Layers: +0..1 vignette/backplates, +2..3 fills, +4..5 text, +6.. crosshair/markers.
+	// Bodycam mode: panels dim, the crosshair goes (optionally leaving a dot), hitmarkers stay,
+	// and the recorder overlay fades in. The overlay is Slate, so the lens material never warps it.
+	FPainter Panels = P;
+	Panels.Opacity *= FMath::Lerp(1.0f, BodycamPanelOpacity, BodycamAlpha);
+	FPainter Crosshair = P;
+	Crosshair.Opacity *= 1.0f - BodycamAlpha;
+
+	// Layers: +0..1 vignette/backplates, +2..3 fills, +4..5 text, +6.. crosshair/markers, +10.. bodycam overlay.
 	PaintVignette(P);
-	PaintVitals(P);
-	PaintAmmo(P);
-	PaintRank(P);
+	PaintVitals(Panels);
+	PaintAmmo(Panels);
+	PaintRank(Panels);
 	PaintDamageIndicators(P);
-	PaintCrosshair(P);
+	PaintCrosshair(Crosshair);
 	PaintHitmarker(P);
+	if (BodycamAlpha > 0.001f)
+	{
+		FPainter Overlay = P;
+		Overlay.Opacity *= BodycamAlpha;
+		PaintBodycamOverlay(Overlay);
+	}
 
 	return MaxLayer + 12;
 }
@@ -966,4 +984,76 @@ void UShooterHUDWidget::PaintRank(const FPainter& P) const
 	const FVector2f BarPos(TR.X - 14.0f - RankBarWidth, Origin.Y + PanelSize.Y - 12.0f);
 	P.Rect(BarPos, FVector2f(RankBarWidth, 5.0f), WithAlpha(ColorEmptySlot, PanelAlpha), PanelSkew, 0.0f, 1);
 	P.Rect(BarPos, FVector2f(RankBarWidth * RankProgress, 5.0f), WithAlpha(RankCol, PanelAlpha), PanelSkew, 0.0f, 3);
+}
+
+void UShooterHUDWidget::PaintBodycamOverlay(const FPainter& P) const
+{
+	const FVector2f Inset(P.Size.X * BodycamEdgeInset, P.Size.Y * BodycamEdgeInset);
+
+	// Monospace with a 1px dark outline so it reads on any background.
+	FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Mono", BodycamFontSize);
+	Font.OutlineSettings.OutlineSize = 1;
+	Font.OutlineSettings.OutlineColor = FLinearColor(0.0f, 0.0f, 0.0f, 0.85f * P.Opacity);
+	const float LineH = FPainter::Measure(TEXT("0"), Font).Y;
+	constexpr int32 Layer = 10;
+
+	// ── Top-left: blinking REC dot (1 Hz) ───────────────────────────────
+	constexpr float DotSize = 12.0f;
+	const FVector2f DotTopLeft(Inset.X, Inset.Y + (LineH - DotSize) * 0.5f);
+	if (FMath::Fmod(Now, 1.0f) < 0.5f)
+	{
+		const FVector2f Ring(1.0f, 1.0f);
+		FSlateDrawElement::MakeBox(P.Out, P.BaseLayer + Layer, P.Geo.ToPaintGeometry(FVector2f(DotSize + 2.0f, DotSize + 2.0f), FSlateLayoutTransform(1.0f, DotTopLeft - Ring)),
+			&DotBrush, ESlateDrawEffect::None, P.Tint(FLinearColor(0.0f, 0.0f, 0.0f, 0.75f)));
+		FSlateDrawElement::MakeBox(P.Out, P.BaseLayer + Layer + 1, P.Geo.ToPaintGeometry(FVector2f(DotSize, DotSize), FSlateLayoutTransform(1.0f, DotTopLeft)),
+			&DotBrush, ESlateDrawEffect::None, P.Tint(BodycamRecColor));
+	}
+	P.Text(TEXT("REC"), Font, FVector2f(Inset.X + DotSize + 8.0f, Inset.Y), FVector2f(0.0f, 0.0f), BodycamTextColor, 1.0f, nullptr, Layer);
+
+	// ── Top-right: wall clock ───────────────────────────────────────────
+	const FString Stamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+	P.Text(Stamp, Font, FVector2f(P.Size.X - Inset.X, Inset.Y), FVector2f(1.0f, 0.0f), BodycamTextColor, 1.0f, nullptr, Layer);
+
+	// ── Bottom center: device id + battery ──────────────────────────────
+	// Centered so it clears the vitals / ammo panels in the bottom corners.
+	const float Battery = FMath::Clamp(BodycamBatteryStart - BodycamBatteryDrainPerMinute * (Now / 60.0f), 1.0f, 100.0f);
+	const bool bBatteryLow = Battery < 20.0f;
+	const FString Percent = FString::Printf(TEXT("%d%%"), FMath::CeilToInt(Battery));
+
+	const FVector2f IdSize = FPainter::Measure(BodycamDeviceId, Font);
+	const FVector2f BattSize(FMath::RoundToFloat(LineH * 1.5f), FMath::RoundToFloat(LineH * 0.6f));
+	constexpr float NubW = 3.0f;
+	constexpr float IdGap = 22.0f;
+	const FVector2f PctSize = FPainter::Measure(Percent, Font);
+	const float TotalW = IdSize.X + IdGap + BattSize.X + NubW + 6.0f + PctSize.X;
+	const float X0 = FMath::RoundToFloat((P.Size.X - TotalW) * 0.5f);
+	const float Y0 = P.Size.Y - Inset.Y - LineH;
+
+	P.Text(BodycamDeviceId, Font, FVector2f(X0, Y0), FVector2f(0.0f, 0.0f), BodycamTextColor, 1.0f, nullptr, Layer);
+
+	const FVector2f BattPos(X0 + IdSize.X + IdGap, FMath::RoundToFloat(Y0 + (LineH - BattSize.Y) * 0.5f));
+	const FLinearColor Dark(0.0f, 0.0f, 0.0f, 0.75f);
+	const FLinearColor BattCol = bBatteryLow ? BodycamRecColor : BodycamTextColor;
+	constexpr float Th = 1.5f;
+	// Dark backing doubles as the 1px outline.
+	P.Rect(BattPos - FVector2f(1.0f, 1.0f), BattSize + FVector2f(NubW + 2.0f, 2.0f), Dark, 0.0f, 0.0f, Layer);
+	P.Rect(BattPos, FVector2f(BattSize.X, Th), BattCol, 0.0f, 0.0f, Layer + 1);
+	P.Rect(BattPos + FVector2f(0.0f, BattSize.Y - Th), FVector2f(BattSize.X, Th), BattCol, 0.0f, 0.0f, Layer + 1);
+	P.Rect(BattPos, FVector2f(Th, BattSize.Y), BattCol, 0.0f, 0.0f, Layer + 1);
+	P.Rect(BattPos + FVector2f(BattSize.X - Th, 0.0f), FVector2f(Th, BattSize.Y), BattCol, 0.0f, 0.0f, Layer + 1);
+	P.Rect(BattPos + FVector2f(BattSize.X, BattSize.Y * 0.3f), FVector2f(NubW, BattSize.Y * 0.4f), BattCol, 0.0f, 0.0f, Layer + 1);
+	const float Pad = Th + 1.5f;
+	const FVector2f FillMax = BattSize - FVector2f(2.0f * Pad, 2.0f * Pad);
+	P.Rect(BattPos + FVector2f(Pad, Pad), FVector2f(FillMax.X * Battery / 100.0f, FillMax.Y), BattCol, 0.0f, 0.0f, Layer + 1);
+
+	P.Text(Percent, Font, FVector2f(BattPos.X + BattSize.X + NubW + 6.0f, Y0), FVector2f(0.0f, 0.0f), BattCol, 1.0f, nullptr, Layer);
+
+	// ── Optional center dot (replaces the hidden crosshair) ─────────────
+	if (bBodycamCenterDot)
+	{
+		const FVector2f C = P.Size * 0.5f;
+		const FVector2f D(CrosshairDotSize, CrosshairDotSize);
+		P.RectCentered(C, D + FVector2f(2.0f, 2.0f), ColorShadow, 0.0f, 0.0f, Layer);
+		P.RectCentered(C, D, BodycamTextColor, 0.0f, 0.0f, Layer + 1);
+	}
 }
