@@ -9,8 +9,6 @@
 class UDoomMovementComponent;
 class UDoomCameraModifier;
 
-DECLARE_DELEGATE_RetVal(bool, FDoomAimStateProvider);
-
 UCLASS(ClassGroup="Camera", meta=(BlueprintSpawnableComponent))
 class FPS_MOVEMENT_API UDoomCameraEffectsComponent : public UActorComponent
 {
@@ -20,7 +18,19 @@ public:
 
 	UDoomCameraEffectsComponent();
 
-	FDoomAimStateProvider AimStateProvider;
+	/**
+	 * Push the current aim-down-sights blend. Called every frame by the owning character
+	 * (which ticks first). Alpha is the visual ADS alpha in [0,1]; FOV arguments <= 0 fall
+	 * back to ADSFOV / ADSFirstPersonFOV on this component.
+	 */
+	void SetADSState(float Alpha, float WorldFOV, float FirstPersonFOV);
+
+	/** World FOV written to the camera last frame (movement FOV blended with ADS). */
+	UFUNCTION(BlueprintPure, Category="DoomCamera|FOV")
+	float GetCurrentFOV() const { return CurrentFOV; }
+
+	/** Camera modifier owned by this component (null until the player camera manager exists). */
+	UDoomCameraModifier* GetCameraModifier() const { return CameraModifier; }
 
 	// ── FOV ─────────────────────────────────────────────────────────────
 
@@ -36,11 +46,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DoomCamera|FOV")
 	float DashFOV = 115.0f;
 
+	/** Default aimed world FOV, used when the weapon does not provide one. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DoomCamera|FOV")
 	float ADSFOV = 65.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DoomCamera|FOV", meta=(ClampMin=1, ClampMax=30))
-	float ADSInterpSpeed = 16.0f;
+	/** Default aimed first-person (viewmodel) FOV, used when the weapon does not provide one. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DoomCamera|FOV")
+	float ADSFirstPersonFOV = 60.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DoomCamera|FOV", meta=(ClampMin=1, ClampMax=30))
 	float FOVInterpSpeed = 12.0f;
@@ -140,9 +152,18 @@ private:
 
 	FVector BaseCameraRelativeLocation = FVector::ZeroVector;
 
+	/** Final world FOV = lerp(CurrentMovementFOV, ADS world FOV, ADSAlpha). */
 	float CurrentFOV = 90.0f;
-	float TargetFOV = 90.0f;
-	bool bWasADS = false;
+
+	/** Sprint/slide/dash FOV, smoothed independently of ADS so the two blend instead of overriding. */
+	float CurrentMovementFOV = 90.0f;
+
+	/** Camera's authored FirstPersonFieldOfView, captured at BeginPlay. */
+	float BaseFirstPersonFOV = 70.0f;
+
+	float ADSAlpha = 0.0f;
+	float ADSWorldFOVTarget = -1.0f;
+	float ADSFirstPersonFOVTarget = -1.0f;
 	float CurrentTiltRoll = 0.0f;
 	float TargetTiltRoll = 0.0f;
 

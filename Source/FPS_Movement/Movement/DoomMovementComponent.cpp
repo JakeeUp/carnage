@@ -92,7 +92,14 @@ float UDoomMovementComponent::GetMaxSpeed() const
 
 	if (IsMovingOnGround() && bWantsToSprint && !IsCrouching())
 	{
-		return SprintSpeed * ExternalSpeedScale;
+		return SprintSpeed * ExternalSpeedScale * ADSSpeedScale;
+	}
+
+	// Aiming down sights only slows grounded walking; slides, dashes, wall runs and air
+	// strafing keep their full speed so ADS stays usable mid-flow.
+	if (IsMovingOnGround())
+	{
+		return Super::GetMaxSpeed() * ADSSpeedScale;
 	}
 
 	return Super::GetMaxSpeed();
@@ -835,6 +842,11 @@ float UDoomMovementComponent::GetHorizontalSpeed() const
 void UDoomMovementComponent::SetExternalSpeedScale(float NewScale)
 {
 	ExternalSpeedScale = FMath::Clamp(NewScale, 1.0f, 2.0f);
+}
+
+void UDoomMovementComponent::SetADSSpeedScale(float NewScale)
+{
+	ADSSpeedScale = FMath::Clamp(NewScale, 0.1f, 1.0f);
 }
 
 EDoomMovementState UDoomMovementComponent::GetMovementState() const

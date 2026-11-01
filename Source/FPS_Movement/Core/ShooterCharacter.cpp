@@ -24,6 +24,16 @@
 #include "TimerManager.h"
 #include "ShooterGameMode.h"
 #include "GameplayEffect.h"
+#include "ViewSpringMath.h"
+#include "HAL/IConsoleManager.h"
+
+#if !UE_BUILD_SHIPPING
+static TAutoConsoleVariable<int32> CVarCarnageForceADS(
+	TEXT("carnage.Debug.ForceADS"),
+	0,
+	TEXT("1 = the local shooter character behaves as if the ADS button is held (for screenshots / sight tuning)."),
+	ECVF_Cheat);
+#endif
 
 AShooterCharacter::AShooterCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UDoomMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -72,11 +82,6 @@ void AShooterCharacter::BeginPlay()
 
 	DoomMovement = Cast<UDoomMovementComponent>(GetCharacterMovement());
 
-	if (CameraEffects)
-	{
-		CameraEffects->AimStateProvider.BindUObject(this, &AShooterCharacter::IsAimingDownSights);
-	}
-
 	if (AbilitySystem)
 	{
 		AbilitySystem->InitAbilityActorInfo(this, this);
@@ -99,6 +104,8 @@ void AShooterCharacter::BeginPlay()
 void AShooterCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	UpdateADS(DeltaSeconds);
 
 	if (!AbilitySystem || !DoomMovement) return;
 
@@ -197,6 +204,13 @@ float AShooterCharacter::TakeDamage(float Damage, struct FDamageEvent const& Dam
 
 	AbilitySystem->ApplyDamageToSelf(DefaultDamageEffect, Damage, DamageCauser, DamageTags);
 
+	// Tell the HUD where the hit came from (the instigating pawn if known, else the causer).
+	const AActor* Source = (EventInstigator && EventInstigator->GetPawn()) ? EventInstigator->GetPawn() : DamageCauser;
+	if (Source && Source != this)
+	{
+		OnDamageSource.Broadcast(Source->GetActorLocation());
+	}
+
 	return Damage;
 }
 
@@ -204,6 +218,24 @@ void AShooterCharacter::DoAim(float Yaw, float Pitch)
 {
 	if (!IsDead())
 	{
+		// Zoom-ratio sensitivity: keep the on-screen speed of the world roughly constant as the
+		// FOV narrows. Uses the ADS part of the FOV only, so sprint/dash FOV kicks don't change aim feel.
+		float LookScale = 1.0f;
+		if (ADSAlpha > 0.0f)
+		{
+			if (bScaleLookByADSZoom && CameraEffects)
+			{
+				const float BaseFOV = FMath::Clamp(CameraEffects->BaseFOV, 5.0f, 170.0f);
+				const float AimFOV = CurrentWeapon ? CurrentWeapon->GetADSWorldFOV() : CameraEffects->ADSFOV;
+				const float CurFOV = FMath::Clamp(FMath::Lerp(BaseFOV, AimFOV, ADSAlpha), 5.0f, 170.0f);
+				LookScale = FMath::Tan(FMath::DegreesToRadians(CurFOV) * 0.5f) / FMath::Tan(FMath::DegreesToRadians(BaseFOV) * 0.5f);
+			}
+			LookScale *= FMath::Lerp(1.0f, ADSLookSensitivityMultiplier, ADSAlpha);
+		}
+
+		Yaw *= LookScale;
+		Pitch *= LookScale;
+
 		if (RecoilComponent)
 		{
 			RecoilComponent->NotifyAimInput(Yaw, Pitch);
@@ -263,6 +295,14 @@ void AShooterCharacter::DoStartFiring()
 {
 	if (CurrentWeapon && !IsDead())
 	{
+		// Firing breaks sprint; if ADS is still held it takes over again.
+		if (DoomMovement)
+		{
+			DoomMovement->StopSprint();
+		}
+		bADSSuppressedBySprint = false;
+		RefreshAimState();
+
 		CurrentWeapon->StartFiring();
 	}
 }
@@ -477,6 +517,14 @@ void AShooterCharacter::DoStartSprint()
 {
 	if (!IsDead() && DoomMovement)
 	{
+		// Most recent input wins: sprinting lowers the sights (they come back on sprint release
+		// if ADS is still held).
+		if (bADSInputHeld)
+		{
+			bADSSuppressedBySprint = true;
+			RefreshAimState();
+		}
+
 		DoomMovement->StartSprint();
 		PlayCameraShake(SprintCameraShake);
 	}
@@ -488,6 +536,9 @@ void AShooterCharacter::DoStopSprint()
 	{
 		DoomMovement->StopSprint();
 	}
+
+	bADSSuppressedBySprint = false;
+	RefreshAimState();
 }
 
 void AShooterCharacter::DoSlide()
@@ -508,29 +559,102 @@ void AShooterCharacter::DoStopSlide()
 
 void AShooterCharacter::DoStartADS()
 {
-	if (!IsDead())
+	bADSInputHeld = true;
+	bADSSuppressedBySprint = false;
+
+	// Raising the sights stops a sprint. Slides, wall runs and air time are unaffected.
+	if (!IsDead() && DoomMovement)
 	{
-		bIsAimingDownSights = true;
-
-		if (RecoilComponent)
-		{
-			RecoilComponent->SetVisualScale(0.35f);
-		}
-
-		OnAimStateChanged.Broadcast(true);
+		DoomMovement->StopSprint();
 	}
+
+	RefreshAimState();
 }
 
 void AShooterCharacter::DoStopADS()
 {
-	bIsAimingDownSights = false;
+	bADSInputHeld = false;
+	RefreshAimState();
+}
 
-	if (RecoilComponent)
+// ─── ADS ────────────────────────────────────────────────────────────────────
+
+bool AShooterCharacter::IsAiming() const
+{
+	if (IsDead())
 	{
-		RecoilComponent->SetVisualScale(1.0f);
+		return false;
 	}
 
-	OnAimStateChanged.Broadcast(false);
+#if !UE_BUILD_SHIPPING
+	if (CVarCarnageForceADS.GetValueOnGameThread() != 0)
+	{
+		return true;
+	}
+#endif
+
+	return bADSInputHeld && !bADSSuppressedBySprint;
+}
+
+void AShooterCharacter::RefreshAimState()
+{
+	const bool bAimingNow = IsAiming();
+	if (bAimingNow != bLastBroadcastAiming)
+	{
+		bLastBroadcastAiming = bAimingNow;
+		OnAimStateChanged.Broadcast(bAimingNow);
+	}
+}
+
+void AShooterCharacter::UpdateADS(float DeltaSeconds)
+{
+	// Catches state changes that don't come from input (death, the ForceADS cvar).
+	RefreshAimState();
+
+	const AShooterWeapon* Weapon = CurrentWeapon;
+
+	// The sights drop during a reload so the reload animation isn't pinned to the camera axis,
+	// but IsAiming() keeps reporting the real input so they come straight back afterwards.
+	const bool bRaiseSights = IsAiming() && !(Weapon && Weapon->IsReloading());
+	const float Target = bRaiseSights ? 1.0f : 0.0f;
+
+	const float SmoothIn = Weapon ? Weapon->GetADSSmoothingTimeIn() : DefaultADSSmoothingTimeIn;
+	const float SmoothOut = Weapon ? Weapon->GetADSSmoothingTimeOut() : DefaultADSSmoothingTimeOut;
+
+	// A critically damped spring with velocity: reversing mid-transition decelerates and turns
+	// around smoothly instead of restarting from a new curve.
+	if (DeltaSeconds > 0.0f)
+	{
+		ViewSpring::CriticalStep(ADSAlpha, ADSAlphaVelocity, Target, bRaiseSights ? SmoothIn : SmoothOut, DeltaSeconds);
+	}
+
+	if (ADSAlpha <= 0.0f)
+	{
+		ADSAlpha = 0.0f;
+		ADSAlphaVelocity = FMath::Max(ADSAlphaVelocity, 0.0f);
+	}
+	else if (ADSAlpha >= 1.0f)
+	{
+		ADSAlpha = 1.0f;
+		ADSAlphaVelocity = FMath::Min(ADSAlphaVelocity, 0.0f);
+	}
+
+	const float GameplayAlpha = GetADSGameplayAlpha();
+
+	if (DoomMovement)
+	{
+		const float AimSpeedScale = Weapon ? Weapon->GetADSMoveSpeedScale() : 0.75f;
+		DoomMovement->SetADSSpeedScale(FMath::Lerp(1.0f, AimSpeedScale, GameplayAlpha));
+	}
+
+	if (CameraEffects)
+	{
+		CameraEffects->SetADSState(ADSAlpha,
+			Weapon ? Weapon->GetADSWorldFOV() : -1.0f,
+			Weapon ? Weapon->GetADSFirstPersonFOV() : -1.0f);
+	}
+
+	// UWeaponRecoilComponent reads GetADSAlpha() itself when composing the viewmodel.
 }
 
 void AShooterCharacter::DoDash()

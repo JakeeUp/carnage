@@ -18,5 +18,12 @@ public:
 	float PitchOffset = 0.0f;
 	float VerticalOffset = 0.0f;
 
+	/**
+	 * Camera-only recoil rotation, composed in the view's local frame. It moves the view but never
+	 * the control rotation, so it springs back without changing where the player is aiming.
+	 * The viewmodel applies the same rotation so the gun stays fixed on screen.
+	 */
+	FRotator PunchRotation = FRotator::ZeroRotator;
+
 	virtual bool ModifyCamera(float DeltaTime, struct FMinimalViewInfo& InOutPOV) override;
 };
