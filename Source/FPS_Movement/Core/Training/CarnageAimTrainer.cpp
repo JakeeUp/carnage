@@ -269,7 +269,33 @@ void ACarnageAimTrainer::Tick(float DeltaSeconds)
 	}
 
 	TickTargets(DeltaSeconds);
-	RefreshBoard();
+
+	// The board is text formatting, so throttle it instead of rebuilding strings every frame.
+	BoardRefreshAccumulator += DeltaSeconds;
+	if (BoardRefreshAccumulator >= BoardRefreshInterval)
+	{
+		BoardRefreshAccumulator = 0.0f;
+		RefreshBoard();
+	}
+
+	// Nothing to animate between runs: sleep until a mode button starts the next one.
+	if ((RunState == ERunState::Idle || RunState == ERunState::Results) && !AnyTargetAnimating())
+	{
+		RefreshBoard();
+		SetActorTickEnabled(false);
+	}
+}
+
+bool ACarnageAimTrainer::AnyTargetAnimating() const
+{
+	for (const FCarnageAimTarget& Target : Targets)
+	{
+		if (Target.State == ECarnageAimTargetState::Popping)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -409,6 +435,8 @@ void ACarnageAimTrainer::StartRun(ECarnageAimMode NewMode)
 	{
 		return;
 	}
+
+	SetActorTickEnabled(true);
 
 	Mode = NewMode;
 	ClearTargets();

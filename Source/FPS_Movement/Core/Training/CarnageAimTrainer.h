@@ -401,6 +401,15 @@ private:
 	void RefreshButtons();
 	void RefreshBoard();
 
+	/** True while any target is mid pop animation (keeps the actor ticking after a run ends). */
+	bool AnyTargetAnimating() const;
+
+	/** Scoreboard text is rebuilt at this rate rather than every frame. */
+	UPROPERTY(EditAnywhere, Category="Aim Trainer|Board", meta=(ClampMin=0.02, ClampMax=1, Units="s"))
+	float BoardRefreshInterval = 0.1f;
+
+	float BoardRefreshAccumulator = 0.0f;
+
 	static FString ModeName(ECarnageAimMode InMode);
 	float Accuracy() const;
 	float AverageKillMs() const;
