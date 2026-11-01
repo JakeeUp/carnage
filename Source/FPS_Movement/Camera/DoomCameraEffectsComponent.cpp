@@ -26,11 +26,25 @@ void UDoomCameraEffectsComponent::BeginPlay()
 		if (CameraComp)
 		{
 			BaseCameraRelativeLocation = CameraComp->GetRelativeLocation();
+			BaseFirstPersonFOV = CameraComp->FirstPersonFieldOfView;
 		}
 	}
 
+	// The owner pushes the ADS alpha from its own tick; make sure that happens first.
+	if (AActor* Owner = GetOwner())
+	{
+		PrimaryComponentTick.AddPrerequisite(Owner, Owner->PrimaryActorTick);
+	}
+
 	CurrentFOV = BaseFOV;
-	TargetFOV = BaseFOV;
+	CurrentMovementFOV = BaseFOV;
+}
+
+void UDoomCameraEffectsComponent::SetADSState(float Alpha, float WorldFOV, float FirstPersonFOV)
+{
+	ADSAlpha = FMath::Clamp(Alpha, 0.0f, 1.0f);
+	ADSWorldFOVTarget = WorldFOV;
+	ADSFirstPersonFOVTarget = FirstPersonFOV;
 }
 
 void UDoomCameraEffectsComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -56,18 +70,12 @@ void UDoomCameraEffectsComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		if (!CameraModifier) return;
 	}
 
-	// ── Determine target FOV ────────────────────────────────────────────
+	// ── Movement FOV (sprint / slide / dash) ────────────────────────────
+	// Smoothed on its own; ADS is blended on top afterwards so neither overrides the other.
 	float DesiredFOV = BaseFOV;
 	float FOVSpeed = FOVInterpSpeed;
 
-	const bool bADS = AimStateProvider.IsBound() && AimStateProvider.Execute();
-
-	if (bADS)
-	{
-		DesiredFOV = ADSFOV;
-		FOVSpeed = ADSInterpSpeed;
-	}
-	else if (MoveComp->IsDashing())
+	if (MoveComp->IsDashing())
 	{
 		DesiredFOV = DashFOV;
 		FOVSpeed = FOVInterpSpeed * 3.0f;
@@ -80,26 +88,28 @@ void UDoomCameraEffectsComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	{
 		DesiredFOV = SprintFOV;
 	}
-	else if (CurrentFOV > BaseFOV + 1.0f)
+	else if (CurrentMovementFOV > BaseFOV + 1.0f)
 	{
 		FOVSpeed = DashFOVReturnSpeed;
 	}
 
-	if (!bADS)
+	const float SpeedRatio = MoveComp->GetSpeedRatio();
+	DesiredFOV = FMath::Max(DesiredFOV, BaseFOV + SpeedRatio * (SprintFOV - BaseFOV));
+
+	CurrentMovementFOV = FMath::FInterpTo(CurrentMovementFOV, DesiredFOV, DeltaTime, FOVSpeed);
+
+	// ── ADS blend: one alpha drives both the world and the first-person FOV ──
+	const float AimWorldFOV = ADSWorldFOVTarget > 0.0f ? ADSWorldFOVTarget : ADSFOV;
+	const float AimFirstPersonFOV = ADSFirstPersonFOVTarget > 0.0f ? ADSFirstPersonFOVTarget : ADSFirstPersonFOV;
+
+	CurrentFOV = FMath::Lerp(CurrentMovementFOV, AimWorldFOV, ADSAlpha);
+
+	if (CameraComp)
 	{
-		const float SpeedRatio = MoveComp->GetSpeedRatio();
-		DesiredFOV = FMath::Max(DesiredFOV, BaseFOV + SpeedRatio * (SprintFOV - BaseFOV));
+		// The engine renders first-person primitives with their own FOV and cancels the world
+		// FOV for them, so this is the only thing that magnifies the gun while aiming.
+		CameraComp->SetFirstPersonFieldOfView(FMath::Lerp(BaseFirstPersonFOV, AimFirstPersonFOV, ADSAlpha));
 	}
-
-	TargetFOV = DesiredFOV;
-
-	if (bADS && !bWasADS)
-	{
-		CurrentFOV = ADSFOV;
-	}
-	bWasADS = bADS;
-
-	CurrentFOV = FMath::FInterpTo(CurrentFOV, TargetFOV, DeltaTime, FOVSpeed);
 
 	// ── Determine target tilt ───────────────────────────────────────────
 	float DesiredTilt = 0.0f;
@@ -196,7 +206,9 @@ void UDoomCameraEffectsComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 	// ── Slide camera dip + forward lean ─────────────────────────────────
 	const float TargetSlideOffset = MoveComp->IsSliding() ? -SlideCameraDip : 0.0f;
-	const float TargetSlidePitch  = MoveComp->IsSliding() ?  SlideForwardPitch : 0.0f;
+	// The forward lean rotates the view but not the viewmodel, which would push the sight off
+	// centre, so it fades out while aiming.
+	const float TargetSlidePitch  = MoveComp->IsSliding() ?  SlideForwardPitch * (1.0f - ADSAlpha) : 0.0f;
 
 	CurrentSlideOffset = FMath::FInterpTo(CurrentSlideOffset, TargetSlideOffset, DeltaTime, SlideTransitionSpeed);
 	CurrentSlidePitch  = FMath::FInterpTo(CurrentSlidePitch,  TargetSlidePitch,  DeltaTime, SlideTransitionSpeed);

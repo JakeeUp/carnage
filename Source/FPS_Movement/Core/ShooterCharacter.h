@@ -29,6 +29,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDamagedDelegate, float, LifePercent
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FHitConfirmedDelegate, AActor*, Target, float, Damage, bool, bKilled, bool, bHeadshot);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FReserveAmmoUpdatedDelegate, int32, ReserveAmmo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAimStateChangedDelegate, bool, bIsAimingDownSights);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDamageSourceDelegate, FVector, SourceLocation);
 
 UCLASS(abstract)
 class FPS_MOVEMENT_API AShooterCharacter : public AFPS_MovementCharacter, public IShooterWeaponHolder, public IAbilitySystemInterface, public IShooterHitFeedbackReceiver
@@ -158,8 +159,13 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="Weapon")
 	FReserveAmmoUpdatedDelegate OnReserveAmmoUpdated;
 
+	/** Fires whenever IsAiming() changes (the real input state, not the animated alpha). */
 	UPROPERTY(BlueprintAssignable, Category="Aim")
 	FAimStateChangedDelegate OnAimStateChanged;
+
+	/** Fires when damage is taken, with the world location of the instigating pawn (or the damage causer). */
+	UPROPERTY(BlueprintAssignable, Category="Health")
+	FDamageSourceDelegate OnDamageSource;
 
 public:
 
@@ -273,12 +279,70 @@ protected:
 
 public:
 
+	/** True while the player wants to be aimed in (ADS held and not cancelled by sprint). */
 	UFUNCTION(BlueprintPure, Category="Aim")
-	bool IsAimingDownSights() const { return bIsAimingDownSights; }
+	bool IsAiming() const;
+
+	/**
+	 * Visual ADS blend in [0,1], driven by a critically damped spring. The sight alignment,
+	 * world/first-person FOV, sway, bob and visual kick all read this one value.
+	 */
+	UFUNCTION(BlueprintPure, Category="Aim")
+	float GetADSAlpha() const { return ADSAlpha; }
+
+	/** SmoothStep of GetADSAlpha(); used for gameplay scalars (move speed, aim recoil). */
+	UFUNCTION(BlueprintPure, Category="Aim")
+	float GetADSGameplayAlpha() const { return FMath::SmoothStep(0.0f, 1.0f, ADSAlpha); }
+
+	/**
+	 * LEGACY ANIM HOOK. ABP_ShooterArms calls this by name to drive its own ADS pose state
+	 * machine. ADS is now procedural (UWeaponRecoilComponent aligns the sight), so this returns
+	 * false unless bAnimBPDrivesADSPose is set. Gameplay code should use IsAiming() / GetADSAlpha().
+	 */
+	UFUNCTION(BlueprintPure, Category="Aim")
+	bool IsAimingDownSights() const { return bAnimBPDrivesADSPose && IsAiming(); }
+
+	UFUNCTION(BlueprintPure, Category="Weapon")
+	AShooterWeapon* GetCurrentWeapon() const { return CurrentWeapon; }
 
 protected:
 
-	bool bIsAimingDownSights = false;
+	/** Let the arms anim BP play its own ADS pose (legacy). Leave off: C++ owns ADS procedurally. */
+	UPROPERTY(EditAnywhere, Category="Aim")
+	bool bAnimBPDrivesADSPose = false;
+
+	/** Scale look input by the zoom ratio tan(FOV/2)/tan(BaseFOV/2) while aiming. */
+	UPROPERTY(EditAnywhere, Category="Aim")
+	bool bScaleLookByADSZoom = true;
+
+	/** Extra look-sensitivity multiplier at full ADS (blended by the ADS alpha). */
+	UPROPERTY(EditAnywhere, Category="Aim", meta=(ClampMin=0.1, ClampMax=3))
+	float ADSLookSensitivityMultiplier = 1.0f;
+
+	/** ADS spring smoothing / move-speed values used when no weapon is equipped. */
+	UPROPERTY(EditAnywhere, Category="Aim", meta=(ClampMin=0.01, ClampMax=1, Units="s"))
+	float DefaultADSSmoothingTimeIn = 0.085f;
+
+	UPROPERTY(EditAnywhere, Category="Aim", meta=(ClampMin=0.01, ClampMax=1, Units="s"))
+	float DefaultADSSmoothingTimeOut = 0.07f;
+
+	/** Physical ADS button state. */
+	bool bADSInputHeld = false;
+
+	/** Set when sprint is pressed while aiming; cleared on sprint release or a new ADS press. */
+	bool bADSSuppressedBySprint = false;
+
+	/** Last value broadcast through OnAimStateChanged. */
+	bool bLastBroadcastAiming = false;
+
+	float ADSAlpha = 0.0f;
+	float ADSAlphaVelocity = 0.0f;
+
+	/** Re-evaluate IsAiming() and broadcast OnAimStateChanged on change. */
+	void RefreshAimState();
+
+	/** Advance the ADS spring and push the blend to the camera, movement and recoil components. */
+	void UpdateADS(float DeltaSeconds);
 
 	UPROPERTY()
 	TObjectPtr<UDoomMovementComponent> DoomMovement;

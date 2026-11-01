@@ -11,5 +11,11 @@ bool UDoomCameraModifier::ModifyCamera(float DeltaTime, FMinimalViewInfo& InOutP
 	InOutPOV.Rotation.Pitch += PitchOffset;
 	InOutPOV.Location.Z += VerticalOffset;
 
+	if (!PunchRotation.IsNearlyZero(1.e-4f))
+	{
+		// Local-space composition: the punch pitches/rolls about the view's own axes.
+		InOutPOV.Rotation = (InOutPOV.Rotation.Quaternion() * PunchRotation.Quaternion()).Rotator();
+	}
+
 	return false;
 }
