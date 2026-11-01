@@ -9,7 +9,10 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/DamageType.h"
-#include "Kismet/GameplayStatics.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "PhysicsEngine/PhysicsAsset.h"
+#include "ShooterShootable.h"
+#include "FPS_Movement.h"
 
 namespace
 {
@@ -37,6 +40,17 @@ namespace
 
 		return false;
 	}
+
+	void NotifyShooter(const FShooterHitInfo& Hit, const FShooterHitOutcome& Outcome)
+	{
+		if (Hit.InstigatorPawn && Hit.InstigatorPawn != Hit.Target)
+		{
+			if (IShooterHitFeedbackReceiver* Receiver = Cast<IShooterHitFeedbackReceiver>(Hit.InstigatorPawn))
+			{
+				Receiver->NotifyDamageDealt(Hit.Target, Outcome.DamageDealt, Outcome.bKilled, Outcome.bHeadshot, Hit.HitLocation);
+			}
+		}
+	}
 }
 
 FShooterHitOutcome ShooterDamage::ApplyHit(const FShooterHitInfo& Hit)
@@ -48,63 +62,113 @@ FShooterHitOutcome ShooterDamage::ApplyHit(const FShooterHitInfo& Hit)
 		return Outcome;
 	}
 
+	// ── Shootable actors (practice targets, breakables) ────────────────
+	if (IShooterShootable* Shootable = Cast<IShooterShootable>(Hit.Target))
+	{
+		if (Shootable->HandleShot(Hit, Outcome))
+		{
+			NotifyShooter(Hit, Outcome);
+			return Outcome;
+		}
+	}
+
 	// ── Character damage ────────────────────────────────────────────────
 	if (ACharacter* HitCharacter = Cast<ACharacter>(Hit.Target))
 	{
 		const bool bWasDead = HitCharacter->ActorHasTag(DeadActorTag);
 
-		float StyleMultiplier = 1.0f;
-		if (IShooterWeaponHolder* Holder = Cast<IShooterWeaponHolder>(Hit.InstigatorPawn))
+		// AI rounds don't hurt other AI: with bullets now reaching pawns, a squad would gun itself down.
+		const bool bAIFriendlyFire = Hit.InstigatorPawn && Hit.InstigatorPawn != HitCharacter
+			&& !Hit.InstigatorPawn->IsPlayerControlled() && !HitCharacter->IsPlayerControlled();
+		if (bAIFriendlyFire)
 		{
-			StyleMultiplier = Holder->GetOutgoingDamageMultiplier();
+			return Outcome;
 		}
 
-		Outcome.bHeadshot = ResolveHeadshot(*HitCharacter, Hit);
-		Outcome.DamageDealt = Hit.BaseDamage * (Outcome.bHeadshot ? Hit.HeadshotMultiplier : 1.0f) * StyleMultiplier;
-
-		UGameplayStatics::ApplyDamage(
-			HitCharacter,
-			Outcome.DamageDealt,
-			Hit.InstigatorController,
-			Hit.DamageCauser,
-			Hit.DamageType ? Hit.DamageType : TSubclassOf<UDamageType>(UDamageType::StaticClass()));
-
-		Outcome.bDamagedCharacter = true;
-
-		Outcome.bKilled = !bWasDead && HitCharacter->ActorHasTag(DeadActorTag);
-
-		// ── Hit feedback to the shooter ─────────────────────────────────
-		if (Hit.InstigatorPawn && Hit.InstigatorPawn != Hit.Target)
+		// Corpses take no damage and give no hit feedback, but still get the physics push below.
+		if (!bWasDead)
 		{
-			if (IShooterHitFeedbackReceiver* Receiver = Cast<IShooterHitFeedbackReceiver>(Hit.InstigatorPawn))
+			float StyleMultiplier = 1.0f;
+			if (IShooterWeaponHolder* Holder = Cast<IShooterWeaponHolder>(Hit.InstigatorPawn))
 			{
-				Receiver->NotifyDamageDealt(Hit.Target, Outcome.DamageDealt, Outcome.bKilled, Outcome.bHeadshot, Hit.HitLocation);
+				StyleMultiplier = Holder->GetOutgoingDamageMultiplier();
 			}
-		}
 
-		// ── Juggle knockback ────────────────────────────────────────────
-		if (Hit.KnockbackForce > 0.0f && !Outcome.bKilled)
-		{
-			if (UJuggleComponent* Juggle = HitCharacter->FindComponentByClass<UJuggleComponent>())
+			Outcome.bHeadshot = ResolveHeadshot(*HitCharacter, Hit);
+			Outcome.DamageDealt = Hit.BaseDamage * (Outcome.bHeadshot ? Hit.HeadshotMultiplier : 1.0f) * StyleMultiplier;
+
+			if (Outcome.DamageDealt != 0.0f)
 			{
-				bool bLauncher = false;
-				if (const ACharacter* InstChar = Cast<ACharacter>(Hit.InstigatorPawn))
+				// Point damage, so the receiver knows the bone, location and direction for hit reactions.
+				FHitResult PointHit(HitCharacter, Hit.HitComponent, Hit.HitLocation, -Hit.HitDirection);
+				PointHit.BoneName = Hit.BoneName;
+
+				FShooterPointDamageEvent DamageEvent(
+					Outcome.DamageDealt,
+					PointHit,
+					Hit.HitDirection,
+					Hit.DamageType ? Hit.DamageType : TSubclassOf<UDamageType>(UDamageType::StaticClass()));
+				DamageEvent.bHeadshot = Outcome.bHeadshot;
+				DamageEvent.PhysicsImpulse = Hit.PhysicsImpulse;
+
+				HitCharacter->TakeDamage(Outcome.DamageDealt, DamageEvent, Hit.InstigatorController, Hit.DamageCauser);
+			}
+
+			Outcome.bDamagedCharacter = true;
+
+			Outcome.bKilled = HitCharacter->ActorHasTag(DeadActorTag);
+
+			// ── Hit feedback to the shooter ─────────────────────────────
+			NotifyShooter(Hit, Outcome);
+
+			// ── Juggle knockback ────────────────────────────────────────
+			if (Hit.KnockbackForce > 0.0f && !Outcome.bKilled)
+			{
+				if (UJuggleComponent* Juggle = HitCharacter->FindComponentByClass<UJuggleComponent>())
 				{
-					if (const UDoomMovementComponent* InstMove = Cast<UDoomMovementComponent>(InstChar->GetCharacterMovement()))
+					bool bLauncher = false;
+					if (const ACharacter* InstChar = Cast<ACharacter>(Hit.InstigatorPawn))
 					{
-						bLauncher = InstMove->IsSliding();
+						if (const UDoomMovementComponent* InstMove = Cast<UDoomMovementComponent>(InstChar->GetCharacterMovement()))
+						{
+							bLauncher = InstMove->IsSliding();
+						}
 					}
+					Juggle->ApplyKnockback(Hit.HitDirection, Hit.KnockbackForce, bLauncher);
 				}
-				Juggle->ApplyKnockback(Hit.HitDirection, Hit.KnockbackForce, bLauncher);
 			}
 		}
 	}
 
 	// ── Physics push ────────────────────────────────────────────────────
-	if (Hit.HitComponent && Hit.HitComponent->IsSimulatingPhysics())
+	// Living characters drive their own reaction (flinch / death impulse) from the damage event.
+	if (!Outcome.bDamagedCharacter && Hit.HitComponent && Hit.HitComponent->IsSimulatingPhysics(Hit.BoneName))
 	{
-		Hit.HitComponent->AddImpulseAtLocation(Hit.HitDirection * Hit.PhysicsImpulse, Hit.HitLocation);
+		Hit.HitComponent->AddImpulseAtLocation(Hit.HitDirection * Hit.PhysicsImpulse, Hit.HitLocation, Hit.BoneName);
 	}
 
 	return Outcome;
+}
+
+bool ShooterDamage::SetupPerBoneWeaponHits(ACharacter* Character, bool bEnablePhysicsBodies)
+{
+	USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
+	UCapsuleComponent* Capsule = Character ? Character->GetCapsuleComponent() : nullptr;
+	if (!Mesh || !Capsule || !Mesh->GetPhysicsAsset())
+	{
+		return false;
+	}
+
+	if (bEnablePhysicsBodies)
+	{
+		Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+	else if (!Mesh->IsQueryCollisionEnabled())
+	{
+		Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	}
+
+	Mesh->SetCollisionResponseToChannel(ECC_Weapon, ECR_Block);
+	Capsule->SetCollisionResponseToChannel(ECC_Weapon, ECR_Ignore);
+	return true;
 }
