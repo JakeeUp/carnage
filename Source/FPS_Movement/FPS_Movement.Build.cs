@@ -41,7 +41,8 @@ public class FPS_Movement : ModuleRules
 			"FPS_Movement/Core",       // the shooter game
 			"FPS_Movement/Core/AI",
 			"FPS_Movement/Core/UI",
-			"FPS_Movement/Core/Weapons"
+			"FPS_Movement/Core/Weapons",
+			"FPS_Movement/Core/Training"   // custom: in-world aim trainer
 		});
 	}
 }
