@@ -18,6 +18,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Shooter")
 	TSubclassOf<UShooterUI> ShooterUIClass;
 
+	/** The template team-score widget. Off by default: the native HUD owns the screen. */
+	UPROPERTY(EditAnywhere, Category="Shooter")
+	bool bShowTemplateScoreUI = false;
+
 	UPROPERTY()
 	TObjectPtr<UShooterUI> ShooterUI;
 

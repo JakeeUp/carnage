@@ -10,7 +10,7 @@ void AShooterGameMode::BeginPlay()
 	Super::BeginPlay();
 
 	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
-	if (ShooterUIClass && PC)
+	if (bShowTemplateScoreUI && ShooterUIClass && PC)
 	{
 		ShooterUI = CreateWidget<UShooterUI>(PC, ShooterUIClass);
 		if (ShooterUI)
