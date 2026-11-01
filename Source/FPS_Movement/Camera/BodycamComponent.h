@@ -116,9 +116,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Rig", meta=(Units="cm"))
 	FVector ChestMountOffset = FVector(10.0f, 0.0f, -20.0f);
 
-	/** Degrees added on top of the current (movement + ADS) world FOV. */
+	/** Degrees added on top of the current (movement + ADS) world FOV. Offsets the ~1.3x centre zoom of the lens normalisation. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Rig", meta=(ClampMin=0, ClampMax=40))
-	float FOVBonus = 12.0f;
+	float FOVBonus = 16.0f;
 
 	/** Critically damped spring rate (rad/s) of the view chasing the control rotation, hip and ADS. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Rig", meta=(ClampMin=1, ClampMax=100))

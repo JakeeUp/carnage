@@ -24,8 +24,8 @@ instance's parameters from the base material's values, so the effect fades in sm
   ChromaticAberration  0..1  multiplier on CAStrength
   Border               0..1  rounded-rect border opacity
   RollingShutter       signed horizontal skew in viewport-UV units per unit of (uv.y - 0.5)
-  K1, K2                     radial coefficients (0.22, 0.05)
-  CAStrength                 radial scale difference between R and B at r^2 = 1
+  K1, K2                     radial coefficients (0.32, 0.10: a clearly visible fisheye)
+  CAStrength                 radial scale difference between R and B at r^2 = 1 (0.016)
 
 The distortion formula is the standard Brown-Conrady radial model,
   r' = r * (1 + k1*r^2 + k2*r^4),
@@ -99,8 +99,9 @@ float2 c = uv - 0.5;
 c.x *= Aspect;
 float r2 = dot(c, c);
 
-// Brown-Conrady radial term, faded in away from the centre so the aim area stays rectilinear.
-float w = smoothstep(0.08, 0.45, sqrt(r2));
+// Brown-Conrady radial term, faded in away from the centre so the aim area (central ~15% of the
+// screen height) stays rectilinear and fringe-free.
+float w = smoothstep(0.075, 0.45, sqrt(r2));
 float k1 = K1 * Amount * w;
 float k2 = K2 * Amount * w;
 float f = 1.0 + k1 * r2 + k2 * r2 * r2;
@@ -112,7 +113,7 @@ float n = 1.0 + K1 * Amount * rn + K2 * Amount * rn * rn;
 c *= f / n;
 
 // Radial chromatic aberration: this channel is sampled at a slightly different radius.
-c *= 1.0 + ChannelScale * r2;
+c *= 1.0 + ChannelScale * r2 * w;
 
 c.x /= Aspect;
 return c + 0.5;
@@ -128,12 +129,14 @@ float Inside = smoothstep(-0.004, 0.006, min(e.x, e.y));
 
 // Rounded-rect housing border (signed distance in aspect-corrected units).
 float2 p = (UV - 0.5) * float2(Aspect, 1.0);
-float Radius = 0.10;
-float2 HalfSize = float2(0.5 * Aspect, 0.5) - 0.006;
+float Radius = 0.16;
+float2 HalfSize = float2(0.5 * Aspect, 0.5) - 0.008;
 float2 q = abs(p) - (HalfSize - Radius);
 float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - Radius;
-float Housing = 1.0 - smoothstep(-0.045, 0.0, d);
-float Mask = Inside * lerp(1.0, Housing, saturate(Border));
+float Housing = 1.0 - smoothstep(-0.06, 0.0, d);
+// Lens falloff toward the corners (on top of the engine vignette), part of the housing look.
+float Falloff = 1.0 - 0.45 * smoothstep(0.45, 1.05, length(p));
+float Mask = Inside * lerp(1.0, Housing * Falloff, saturate(Border));
 
 return float3(CR.r, CG.g, CB.b) * Mask;
 """
@@ -151,9 +154,9 @@ def make_lens():
     p_ca = scalar(mat, "ChromaticAberration", 0.0, -1600, 400)
     p_border = scalar(mat, "Border", 0.0, -1600, 500)
     p_skew = scalar(mat, "RollingShutter", 0.0, -1600, 600)
-    p_k1 = scalar(mat, "K1", 0.22, -1600, 700)
-    p_k2 = scalar(mat, "K2", 0.05, -1600, 800)
-    p_cas = scalar(mat, "CAStrength", 0.006, -1600, 900)
+    p_k1 = scalar(mat, "K1", 0.32, -1600, 700)
+    p_k2 = scalar(mat, "K2", 0.10, -1600, 800)
+    p_cas = scalar(mat, "CAStrength", 0.016, -1600, 900)
 
     # ChannelScale: +CA for red, 0 for green, -CA for blue.
     ca = expr(mat, unreal.MaterialExpressionMultiply, -1350, 900)

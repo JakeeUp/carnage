@@ -75,44 +75,51 @@ UBodycamComponent::UBodycamComponent()
 
 	LensMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Carnage/Bodycam/M_BodycamLens.M_BodycamLens")));
 
-	// Starting values for a cheap body-worn camera: noisy, sharpened, slightly cool and flat,
-	// slow auto exposure. Chromatic aberration comes from the lens material, not SceneFringe.
+	// A deliberately obvious body-worn camera grade: heavy sensor noise (strongest in shadows),
+	// crunchy over-sharpening, strong vignette, cool / desaturated / contrasty with lifted
+	// blacks, slow auto exposure, moderate motion blur. Chromatic aberration comes from the lens
+	// material, not SceneFringe.
 	PostProcess.bOverride_FilmGrainIntensity = true;
-	PostProcess.FilmGrainIntensity = 0.2f;
+	PostProcess.FilmGrainIntensity = 0.5f;
 	PostProcess.bOverride_FilmGrainIntensityShadows = true;
-	PostProcess.FilmGrainIntensityShadows = 0.6f;
+	PostProcess.FilmGrainIntensityShadows = 1.0f;
 	PostProcess.bOverride_FilmGrainIntensityMidtones = true;
-	PostProcess.FilmGrainIntensityMidtones = 0.3f;
+	PostProcess.FilmGrainIntensityMidtones = 0.55f;
 	PostProcess.bOverride_FilmGrainIntensityHighlights = true;
-	PostProcess.FilmGrainIntensityHighlights = 0.1f;
+	PostProcess.FilmGrainIntensityHighlights = 0.2f;
 	PostProcess.bOverride_FilmGrainTexelSize = true;
 	PostProcess.FilmGrainTexelSize = 1.6f;
 
 	PostProcess.bOverride_Sharpen = true;
-	PostProcess.Sharpen = 1.0f;
+	PostProcess.Sharpen = 2.2f;
 
 	PostProcess.bOverride_VignetteIntensity = true;
-	PostProcess.VignetteIntensity = 0.6f;
+	PostProcess.VignetteIntensity = 0.9f;
 
 	PostProcess.bOverride_BloomIntensity = true;
-	PostProcess.BloomIntensity = 1.2f;
+	PostProcess.BloomIntensity = 1.5f;
 
+	// Below the 6500 K default: the scene's white reads as blue, i.e. a cool cast.
 	PostProcess.bOverride_WhiteTemp = true;
-	PostProcess.WhiteTemp = 7000.0f;
+	PostProcess.WhiteTemp = 5400.0f;
 
 	PostProcess.bOverride_ColorSaturation = true;
-	PostProcess.ColorSaturation = FVector4(0.85f, 0.85f, 0.85f, 1.0f);
+	PostProcess.ColorSaturation = FVector4(0.72f, 0.74f, 0.78f, 1.0f);
 
 	PostProcess.bOverride_ColorContrast = true;
-	PostProcess.ColorContrast = FVector4(1.1f, 1.1f, 1.1f, 1.0f);
+	PostProcess.ColorContrast = FVector4(1.25f, 1.25f, 1.25f, 1.0f);
+
+	// Lifted, slightly blue blacks.
+	PostProcess.bOverride_ColorOffset = true;
+	PostProcess.ColorOffset = FVector4(0.012f, 0.016f, 0.024f, 0.0f);
 
 	PostProcess.bOverride_AutoExposureSpeedUp = true;
-	PostProcess.AutoExposureSpeedUp = 1.2f;
+	PostProcess.AutoExposureSpeedUp = 0.8f;
 	PostProcess.bOverride_AutoExposureSpeedDown = true;
-	PostProcess.AutoExposureSpeedDown = 0.7f;
+	PostProcess.AutoExposureSpeedDown = 0.5f;
 
 	PostProcess.bOverride_MotionBlurAmount = true;
-	PostProcess.MotionBlurAmount = 0.4f;
+	PostProcess.MotionBlurAmount = 0.5f;
 }
 
 // ── Lifetime ────────────────────────────────────────────────────────────────
@@ -503,6 +510,8 @@ void UBodycamComponent::ApplyPostProcess(float& OutBlendWeight, FPostProcessSett
 
 	OutSettings = PostProcess;
 	OutSettings.FilmGrainIntensity *= GetEffectiveGrain();
+	// Motion blur is camera motion too, so the Motion accessibility scalar turns it down.
+	OutSettings.MotionBlurAmount *= GetEffectiveMotion();
 
 	if (LensMID)
 	{
