@@ -152,6 +152,7 @@ Damage is applied differently to the two character types:
 ## AI
 
 - `AShooterNPC` implements the weapon holder interface and carries a `UJuggleComponent`. Juggle combat lets the player launch enemies, keep them airborne, and slam them down.
+- NPCs aim at the target's upper chest, lead projectiles, and use a spread that settles while they track and widens with target speed. See [Docs/Systems/NPCAim.md](Docs/Systems/NPCAim.md).
 - `AShooterAIController` runs a `UStateTreeAIComponent`. `ShooterStateTreeUtility` provides the custom StateTree tasks and helpers.
 - `UEnvQueryContext_Target` supplies the target context for Environment Query System queries.
 - `AShooterNPCSpawner` spawns NPCs in the level.
