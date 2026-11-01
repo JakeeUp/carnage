@@ -28,6 +28,7 @@
 #include "GameplayEffect.h"
 #include "ViewSpringMath.h"
 #include "HAL/IConsoleManager.h"
+#include "FPS_Movement.h"
 
 #if !UE_BUILD_SHIPPING
 static TAutoConsoleVariable<int32> CVarCarnageForceADS(
@@ -459,10 +460,11 @@ FVector AShooterCharacter::GetWeaponTargetLocation()
 	const FRotator AimRot = Controller ? Controller->GetControlRotation() : GetFirstPersonCameraComponent()->GetComponentRotation();
 	const FVector End = Start + (AimRot.Vector() * MaxAimDistance);
 
-	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(this);
+	// Weapon channel, so the aim point lands on characters instead of the wall behind them.
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ShooterAim), false, this);
+	QueryParams.AddIgnoredActor(CurrentWeapon);
 
-	GetWorld()->LineTraceSingleByChannel(OutHit, Start, End, ECC_Visibility, QueryParams);
+	GetWorld()->LineTraceSingleByChannel(OutHit, Start, End, ECC_Weapon, QueryParams);
 
 	return OutHit.bBlockingHit ? OutHit.ImpactPoint : OutHit.TraceEnd;
 }

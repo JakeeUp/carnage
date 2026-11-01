@@ -120,10 +120,10 @@ FVector AShooterNPC::GetWeaponTargetLocation()
 
 	FHitResult OutHit;
 
-	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(this);
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ShooterNPCAim), false, this);
+	QueryParams.AddIgnoredActor(Weapon);
 
-	GetWorld()->LineTraceSingleByChannel(OutHit, AimSource, AimTarget, ECC_Visibility, QueryParams);
+	GetWorld()->LineTraceSingleByChannel(OutHit, AimSource, AimTarget, ECC_Weapon, QueryParams);
 
 	return OutHit.bBlockingHit ? OutHit.ImpactPoint : OutHit.TraceEnd;
 }

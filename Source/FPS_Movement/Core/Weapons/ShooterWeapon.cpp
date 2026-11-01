@@ -375,7 +375,7 @@ void AShooterWeapon::FireHitscan(const FVector& TargetLocation)
 	}
 
 	FHitResult Hit;
-	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Weapon, QueryParams);
 	const FVector BeamEnd = bHit ? Hit.ImpactPoint : TraceEnd;
 
 	if (bHit && Hit.GetActor())
