@@ -28,6 +28,8 @@
 #include "GameplayEffect.h"
 #include "ViewSpringMath.h"
 #include "HAL/IConsoleManager.h"
+#include "FPS_Movement.h"
+#include "ShooterDamageUtils.h"
 
 #if !UE_BUILD_SHIPPING
 static TAutoConsoleVariable<int32> CVarCarnageForceADS(
@@ -86,6 +88,13 @@ void AShooterCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	DoomMovement = Cast<UDoomMovementComponent>(GetCharacterMovement());
+
+	// The third-person mesh is owner-hidden, so with the default AlwaysTickPose its bones (and
+	// hit bodies) would never refresh. Query-only bodies: the player has no physics flinch.
+	if (bPerBoneWeaponHits && ShooterDamage::SetupPerBoneWeaponHits(this, false))
+	{
+		GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	}
 
 	if (AbilitySystem)
 	{
@@ -459,10 +468,11 @@ FVector AShooterCharacter::GetWeaponTargetLocation()
 	const FRotator AimRot = Controller ? Controller->GetControlRotation() : GetFirstPersonCameraComponent()->GetComponentRotation();
 	const FVector End = Start + (AimRot.Vector() * MaxAimDistance);
 
-	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(this);
+	// Weapon channel, so the aim point lands on characters instead of the wall behind them.
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ShooterAim), false, this);
+	QueryParams.AddIgnoredActor(CurrentWeapon);
 
-	GetWorld()->LineTraceSingleByChannel(OutHit, Start, End, ECC_Visibility, QueryParams);
+	GetWorld()->LineTraceSingleByChannel(OutHit, Start, End, ECC_Weapon, QueryParams);
 
 	return OutHit.bBlockingHit ? OutHit.ImpactPoint : OutHit.TraceEnd;
 }
