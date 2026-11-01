@@ -62,6 +62,17 @@ public:
 	/** Called by UBodycamCameraModifier; fills the weighted PP blend. */
 	void ApplyPostProcess(float& OutBlendWeight, FPostProcessSettings& OutSettings) const;
 
+	/**
+	 * Feeds a hit into the damage static as if health dropped by HealthDrop (0..1 of max health).
+	 * Used by OnDamaged and by carnage.Debug.BodycamDamageTest.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Bodycam|Damage Static")
+	void AddDamageHit(float HealthDrop);
+
+	/** Current damage static impulse, 0..1, before the fade alpha and accessibility scale. */
+	UFUNCTION(BlueprintPure, Category="Bodycam|Damage Static")
+	float GetDamageStaticImpulse() const { return DamageStatic; }
+
 	// ── Accessibility (each is multiplied by its carnage.Bodycam.* console variable) ──
 
 	/** Lens barrel distortion strength. Console: carnage.Bodycam.Distortion */
@@ -79,6 +90,10 @@ public:
 	/** Film grain. Console: carnage.Bodycam.Grain */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Accessibility", meta=(ClampMin=0, ClampMax=1))
 	float GrainScale = 1.0f;
+
+	/** Red damage static and the low-health static layer (flashing content). Console: carnage.Bodycam.DamageStatic */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Accessibility", meta=(ClampMin=0, ClampMax=1))
+	float DamageStaticScale = 1.0f;
 
 	// ── Toggle ──────────────────────────────────────────────────────────
 
@@ -195,6 +210,55 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Rig", meta=(ClampMin=0, ClampMax=1))
 	float ADSMotionScale = 0.25f;
 
+	// ── Damage static (red analog TV static on hits, only visible in bodycam mode) ──
+
+	/** Health drop (fraction of max health) that counts as a light hit: a quick, faint crackle. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0.001, ClampMax=1))
+	float LightHitHealthDrop = 0.02f;
+
+	/** Health drop (fraction of max health) that counts as a heavy hit: a full-strength burst. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0.001, ClampMax=1))
+	float HeavyHitHealthDrop = 0.2f;
+
+	/** Impulse added by a light hit (a heavy hit adds 1). Smaller drops scale down linearly from this. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0, ClampMax=1))
+	float LightHitImpulse = 0.3f;
+
+	/** Impulse for a hit that reports a damage source but takes no health (armour absorbed it). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0, ClampMax=1))
+	float ArmorHitImpulse = 0.2f;
+
+	/** Rise time constant of the visible static towards the stacked impulse. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0, ClampMax=0.5, Units="s"))
+	float DamageStaticAttackTime = 0.025f;
+
+	/** Exponential release: time to fall to 10% after a light hit. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0.02, ClampMax=3, Units="s"))
+	float LightHitReleaseTime = 0.18f;
+
+	/** Exponential release: time to fall to 10% after a heavy hit. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0.02, ClampMax=3, Units="s"))
+	float HeavyHitReleaseTime = 0.45f;
+
+	/** Health fraction below which the faint low-health static layer fades in. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0, ClampMax=1))
+	float LowHealthStaticThreshold = 0.3f;
+
+	/** LowHealthStatic just under the threshold; it ramps to 1 at zero health. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0, ClampMax=1))
+	float LowHealthStaticMin = 0.35f;
+
+	/** Impulse at or above which a hit also jolts the camera rig (scaled by Motion). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0, ClampMax=1))
+	float HitJoltMinImpulse = 0.6f;
+
+	/** Approximate peak nod and roll of the jolt from a full heavy hit. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0, ClampMax=10, Units="Degrees"))
+	float HitJoltPitch = 1.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bodycam|Damage Static", meta=(ClampMin=0, ClampMax=10, Units="Degrees"))
+	float HitJoltRoll = 1.5f;
+
 protected:
 
 	virtual void BeginPlay() override;
@@ -225,6 +289,16 @@ private:
 	float GetEffectiveDistortion() const;
 	float GetEffectiveChromaticAberration() const;
 	float GetEffectiveGrain() const;
+	float GetEffectiveDamageStatic() const;
+
+	UFUNCTION()
+	void HandleOwnerDamaged(float LifePercent);
+
+	UFUNCTION()
+	void HandleOwnerDamageSource(FVector SourceLocation);
+
+	/** Decays the damage static, eases the low-health layer and runs the debug test hit. */
+	void TickDamageStatic(float RealDelta);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBodycamCameraModifier> Modifier;
@@ -265,4 +339,17 @@ private:
 	FVector2D LandVelocity = FVector2D::ZeroVector;
 	bool bWasFalling = false;
 	float MaxFallSpeed = 0.0f;
+
+	// Damage static: stacked target (decays exponentially) and the visible value chasing it.
+	float DamageImpulse = 0.0f;
+	float DamageStatic = 0.0f;
+	float DamageReleaseTime = 0.0f;
+	float LastHealthPercent = 1.0f;
+	float LowHealthStatic = 0.0f;
+	/** GFrameCounter of the last health-drop hit, so OnDamageSource doesn't count it twice. */
+	uint64 LastHealthHitFrame = 0;
+
+	/** carnage.Debug.BodycamDamageTest: queued test hit (health drop) and its remaining delay. */
+	float PendingTestHit = 0.0f;
+	float PendingTestDelay = 0.0f;
 };
