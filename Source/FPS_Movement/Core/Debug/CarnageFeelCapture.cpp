@@ -12,6 +12,8 @@
 #include "EngineUtils.h"
 #include "Camera/CameraComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "CarnageInputSettings.h"
+#include "InputKeyEventArgs.h"
 #include "FPS_Movement.h"
 
 #if !UE_BUILD_SHIPPING
@@ -30,6 +32,10 @@ static TAutoConsoleVariable<int32> CVarMoveTest(
 static TAutoConsoleVariable<int32> CVarCombatTest(
 	TEXT("carnage.Debug.CombatTest"), 0,
 	TEXT("1 = with FeelCapture, shoot the nearest arena NPCs and then the aim trainer, logging hits/kills and taking screenshots."));
+
+static TAutoConsoleVariable<int32> CVarSensTest(
+	TEXT("carnage.Debug.SensTest"), 0,
+	TEXT("1 = with FeelCapture, inject simulated mouse counts through the real input pipeline and log measured vs target degrees per count."));
 
 static TAutoConsoleVariable<int32> CVarFeelCaptureQuit(
 	TEXT("carnage.Debug.FeelCaptureQuit"), 1,
@@ -150,7 +156,11 @@ void UCarnageFeelCapture::Tick(float DeltaTime)
 			return;
 		}
 		bStarted = true;
-		if (CVarCombatTest.GetValueOnGameThread() != 0)
+		if (CVarSensTest.GetValueOnGameThread() != 0)
+		{
+			BuildSensTest();
+		}
+		else if (CVarCombatTest.GetValueOnGameThread() != 0)
 		{
 			BuildCombatTest();
 		}
@@ -392,4 +402,56 @@ void UCarnageFeelCapture::BuildCombatTest()
 			}
 #endif
 		} });
+}
+
+void UCarnageFeelCapture::BuildSensTest()
+{
+	UWorld* World = GetWorld();
+	constexpr float InjectedCounts = 1000.0f;
+
+	Steps = {
+		{ 1.5f, [this, World]()
+			{
+				if (APlayerController* PC = World->GetFirstPlayerController())
+				{
+					PC->SetControlRotation(FRotator::ZeroRotator);
+				}
+			} },
+		{ 1.7f, [this, World]()
+			{
+				APlayerController* PC = World->GetFirstPlayerController();
+				if (!PC)
+				{
+					return;
+				}
+				SensTestStartRotation = PC->GetControlRotation();
+				// Same path as a physical mouse: the controller's input stack, Enhanced Input, the
+				// IMC modifiers, the character's look handler, and AddController*Input.
+				PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::MouseX, IE_Axis, InjectedCounts));
+				PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::MouseY, IE_Axis, InjectedCounts * 0.05f));
+			} },
+		{ 2.4f, [this, World]()
+			{
+				const APlayerController* PC = World->GetFirstPlayerController();
+				if (!PC)
+				{
+					return;
+				}
+				const FRotator Delta = (PC->GetControlRotation() - SensTestStartRotation).GetNormalized();
+				const float Target = UCarnageInputSettings::GetTargetDegreesPerCount();
+				UE_LOG(LogFPS_Movement, Display, TEXT("[SensTest] yaw: %.5f deg/count (target %.5f, error %.2f%%)  pitch: %.5f deg/count  cm/360 @ %d dpi = %.1f"),
+					Delta.Yaw / InjectedCounts, Target, (Delta.Yaw / InjectedCounts / Target - 1.0f) * 100.0f,
+					FMath::Abs(Delta.Pitch) / (InjectedCounts * 0.05f),
+					GetDefault<UCarnageInputSettings>()->MouseDPI, UCarnageInputSettings::GetCentimetersPer360());
+			} },
+		{ 2.8f, [World]()
+			{
+#if !UE_BUILD_SHIPPING
+				if (CVarFeelCaptureQuit.GetValueOnGameThread() != 0)
+				{
+					UKismetSystemLibrary::QuitGame(World, nullptr, EQuitPreference::Quit, false);
+				}
+#endif
+			} },
+	};
 }

@@ -35,6 +35,10 @@ private:
 	void BuildSequence();
 	void BuildMoveTest();
 	void BuildCombatTest();
+	void BuildSensTest();
+
+	/** Sens test: control rotation captured before the simulated mouse movement. */
+	FRotator SensTestStartRotation = FRotator::ZeroRotator;
 
 	/** Combat test helpers: aim the player's control rotation at a world point and log state. */
 	void AimAt(const FVector& WorldPoint) const;
