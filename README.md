@@ -13,7 +13,7 @@ Momentum-based movement chains into aggressive combat, and a style rank system r
 
 [Feature Tour](#feature-tour) · [Features](#features) · [What I Built](#what-i-built-vs-engine-template) · [Architecture](ARCHITECTURE.md) · [Controls](#controls) · [Build](#build)
 
-![Slide and wall run, aim trainer, and an NPC arena fight, all in bodycam mode](Docs/media/gameplay.gif)
+![Dash and slide, aim trainer, and an NPC arena fight, all in bodycam mode](Docs/media/gameplay.gif)
 
 </div>
 
@@ -24,36 +24,43 @@ Every clip is real-time gameplay in `Lvl_Showcase` with Bodycam Mode on.
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="Docs/media/slide.gif" alt="Momentum slide down a slope" width="100%"><br>
+      <img src="Docs/media/slide.gif" alt="Momentum slide" width="100%"><br>
       <b>Momentum slide</b><br>
       <sub>Slopes add speed, and a sprint into slide gives a boost</sub>
     </td>
     <td width="50%" align="center">
-      <img src="Docs/media/wallrun.gif" alt="Wall-run gauntlet" width="100%"><br>
+      <img src="Docs/media/wallrun.gif" alt="Wall run along the arena wall" width="100%"><br>
       <b>Wall run</b><br>
       <sub>Momentum carries through wall runs and wall jumps</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
+      <img src="Docs/media/dash.gif" alt="Dash" width="100%"><br>
+      <b>Dash</b><br>
+      <sub>Dash charges that recharge, chaining speed into the next move</sub>
+    </td>
+    <td width="50%" align="center">
       <img src="Docs/media/range.gif" alt="Aim down sights on the 10 m range" width="100%"><br>
       <b>Procedural ADS</b><br>
       <sub>One critically damped spring drives sight alignment, FOV, sway, and recoil</sub>
     </td>
+  </tr>
+  <tr>
     <td width="50%" align="center">
       <img src="Docs/media/aim-trainer.gif" alt="Aim trainer Gridshot run" width="100%"><br>
       <b>Aim trainer</b><br>
       <sub>Gridshot with live score, accuracy, time-to-kill, and streaks</sub>
     </td>
-  </tr>
-  <tr>
     <td width="50%" align="center">
       <img src="Docs/media/ragdoll-kill.gif" alt="NPC hit reactions and death ragdoll" width="100%"><br>
       <b>Hit reactions and ragdolls</b><br>
       <sub>Per-bone flinches, then a death ragdoll pushed by the killing shot</sub>
     </td>
-    <td width="50%" align="center">
-      <img src="Docs/media/under-fire.gif" alt="Taking NPC fire in bodycam mode" width="100%"><br>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <img src="Docs/media/under-fire.gif" alt="Taking NPC fire in bodycam mode" width="50%"><br>
       <b>Taking fire in Bodycam Mode</b><br>
       <sub>NPC shots drain health and drive red analog static, tearing, and signal dropout</sub>
     </td>
