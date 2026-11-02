@@ -1,9 +1,64 @@
+<div align="center">
+
 # Project Carnage
 
-A first-person movement shooter built in C++ with Unreal Engine 5.7. Momentum-based movement chains into aggressive combat, and a style rank system rewards varied play.
+**A first-person movement shooter built in C++ with Unreal Engine 5.7.**<br>
+Momentum-based movement chains into aggressive combat, and a style rank system rewards varied play.
 
-![Gameplay](Docs/media/gameplay.gif)
-<!-- TODO: Record a short gameplay GIF (movement chain plus juggle combat, about 10 seconds) and save it to Docs/media/gameplay.gif. -->
+![Unreal Engine 5.7](https://img.shields.io/badge/Unreal_Engine-5.7-0E1128?logo=unrealengine&logoColor=white)
+![C++](https://img.shields.io/badge/C%2B%2B-gameplay-00599C?logo=cplusplus&logoColor=white)
+![GAS](https://img.shields.io/badge/Gameplay_Ability_System-attributes-6A4C93)
+![StateTree](https://img.shields.io/badge/AI-StateTree-2E8B57)
+![Platform](https://img.shields.io/badge/platform-Win64-lightgrey?logo=windows&logoColor=white)
+
+[Feature Tour](#feature-tour) · [Features](#features) · [What I Built](#what-i-built-vs-engine-template) · [Architecture](ARCHITECTURE.md) · [Controls](#controls) · [Build](#build)
+
+![Slide and wall run, aim trainer, and an NPC arena fight, all in bodycam mode](Docs/media/gameplay.gif)
+
+</div>
+
+## Feature Tour
+
+Every clip is real-time gameplay in `Lvl_Showcase` with Bodycam Mode on.
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="Docs/media/slide.gif" alt="Momentum slide down a slope" width="100%"><br>
+      <b>Momentum slide</b><br>
+      <sub>Slopes add speed, and a sprint into slide gives a boost</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="Docs/media/wallrun.gif" alt="Wall-run gauntlet" width="100%"><br>
+      <b>Wall run</b><br>
+      <sub>Momentum carries through wall runs and wall jumps</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="Docs/media/range.gif" alt="Aim down sights on the 10 m range" width="100%"><br>
+      <b>Procedural ADS</b><br>
+      <sub>One critically damped spring drives sight alignment, FOV, sway, and recoil</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="Docs/media/aim-trainer.gif" alt="Aim trainer Gridshot run" width="100%"><br>
+      <b>Aim trainer</b><br>
+      <sub>Gridshot with live score, accuracy, time-to-kill, and streaks</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="Docs/media/ragdoll-kill.gif" alt="NPC hit reactions and death ragdoll" width="100%"><br>
+      <b>Hit reactions and ragdolls</b><br>
+      <sub>Per-bone flinches, then a death ragdoll pushed by the killing shot</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="Docs/media/under-fire.gif" alt="Taking NPC fire in bodycam mode" width="100%"><br>
+      <b>Taking fire in Bodycam Mode</b><br>
+      <sub>NPC shots drain health and drive red analog static, tearing, and signal dropout</sub>
+    </td>
+  </tr>
+</table>
 
 ## Features
 
